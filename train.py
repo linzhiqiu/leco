@@ -4,7 +4,8 @@ import random
 import numpy as np
 import torch
 import configs
-from utils import load_pickle, save_obj_as_pickle
+from utils import load_pickle, save_obj_as_pickle, makedirs
+import hparams
 
 argparser = argparse.ArgumentParser()
 argparser.add_argument("--data_dir", 
@@ -22,10 +23,20 @@ argparser.add_argument("--train_mode",
                         type=str,
                         default=None,
                         choices=configs.TRAIN_MODES.keys(),
-                        help="The train mode")   
+                        help="The train mode") 
+argparser.add_argument("--hparam_str",
+                        type=str,
+                        default='cifar10_default',
+                        choices=hparams.HPARAMS.keys(),
+                        help="The hyperparameter mode")   
 
 
-def start_experiment(data_dir, model_save_dir, setup_mode_str: str, train_mode_str: str, seed=None):
+def start_experiment(data_dir,
+                     model_save_dir,
+                     setup_mode_str: str,
+                     train_mode_str: str,
+                     hparam_str: str,
+                     seed=None):
     seed_str = f"seed_{seed}"
     if seed == None:
         print("Not using a random seed")
@@ -35,7 +46,9 @@ def start_experiment(data_dir, model_save_dir, setup_mode_str: str, train_mode_s
         torch.manual_seed(seed)
         np.random.seed(seed)
     
-    dataset_path = os.path.join(data_dir, setup_mode_str, seed_str, 'dataset.pt')
+    setup_dir = os.path.join(data_dir, setup_mode_str, seed_str)
+    makedirs(setup_dir)
+    dataset_path = os.path.join(setup_dir, 'dataset.pt')
     if os.path.exists(dataset_path):
         dataset = load_pickle(dataset_path)
     else:
@@ -46,7 +59,14 @@ def start_experiment(data_dir, model_save_dir, setup_mode_str: str, train_mode_s
 
     train_subsets, testset = dataset
     
+    train_mode_dir = os.path.join(setup_dir, train_mode_str)
+    makedirs(train_mode_dir)
     train_mode = configs.TRAIN_MODES[train_mode]
+    exp_dir = os.path.join(train_mode_dir, hparam_str)
+    makedirs(exp_dir)
+    hparams_mode = hparams.HPARAMS[hparam_str]
+
+    start_training(train_mode, hparams, train_subsets, testset)
     
     # how about dataloader and optimizer and learning rate?
     

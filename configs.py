@@ -1,3 +1,4 @@
+from hparams import HPARAMS
 
 PRETRAINED_MODES = [
     None,

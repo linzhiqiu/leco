@@ -47,7 +47,7 @@ elif args.model == 'resnet18_simclr_pl':
         use_both_augmentations_as_queries=True,
     )
     model = MoCoMethod(hparams)
-    
+
 trainer = pl.Trainer(gpus=1, max_epochs=320)    
 trainer.fit(model) 
 trainer.save_checkpoint(f"{args.model_save_dir}/{args.model}.ckpt")
