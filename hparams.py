@@ -1,7 +1,3 @@
-HPARAMS = {
-    'cifar10_default' : CIFAR10_DEFAULT_HPARAMS,
-    'cifar10_decay' : CIFAR10_DECAY_HPARAMS,
-}
 
 CIFAR10_DECAY_HPARAMS = {
     'batch' : 128,
@@ -47,4 +43,9 @@ CIFAR10_DEFAULT_HPARAMS = {
         'decay_epochs': 60,
         'decay_by' : 0.1,
     }],
+}
+
+HPARAMS = {
+    'cifar10_default' : CIFAR10_DEFAULT_HPARAMS,
+    'cifar10_decay' : CIFAR10_DECAY_HPARAMS,
 }

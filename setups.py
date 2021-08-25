@@ -3,7 +3,7 @@ from torch.utils.data import Dataset
 
 import torchvision
 import torchvision.transforms as transforms
-
+import random
 import os
 
 def idx_of_superclass(subclass_idx, class_hierarchy, class_to_idx):
@@ -85,7 +85,8 @@ def generate_dataset(data_dir, setup : Setup):
         idx_to_subclass = {class_to_idx[class_name] : class_name for class_name in class_to_idx}
         idx_to_superclass_idx = {idx : idx_of_superclass(idx, setup.class_hierarchy, class_to_idx)
                                  for idx in idx_to_subclass}
-
+        num_of_superclasses = len(setup.class_hierarchy.keys())
+        num_of_subclasses = len(idx_to_subclass.keys())
         trainset = TwoLevelDataset(trainset, idx_to_superclass_idx)
         testset = TwoLevelDataset(testset, idx_to_superclass_idx)
         
@@ -97,7 +98,7 @@ def generate_dataset(data_dir, setup : Setup):
         for _, tp_buffer in enumerate(setup.tp_buffers):
             indices_tp, indices_trainset = indices_trainset[:tp_buffer], indices_trainset[tp_buffer:]
             train_subsets.append(torch.utils.data.Subset(trainset, indices_tp))
-        return train_subsets, testset
+        return train_subsets, testset, (num_of_superclasses, num_of_subclasses)
     else:
         raise NotImplementedError()
 
