@@ -2,13 +2,14 @@ import torch
 import torch.nn as nn
 import torchvision
 from self_supervised.moco import MoCoMethod
+import copy
 
 class ResNetSimCLR(nn.Module):
 
     def __init__(self, base_model, out_dim):
         super(ResNetSimCLR, self).__init__()
-        self.resnet_dict = {"resnet18": models.resnet18(pretrained=False, num_classes=out_dim),
-                            "resnet50": models.resnet50(pretrained=False, num_classes=out_dim)}
+        self.resnet_dict = {"resnet18": torchvision.models.resnet18(pretrained=False, num_classes=out_dim),
+                            "resnet50": torchvision.models.resnet50(pretrained=False, num_classes=out_dim)}
 
         self.backbone = self._get_basemodel(base_model)
         dim_mlp = self.backbone.fc.in_features
@@ -88,6 +89,8 @@ def update_model(model, model_save_dir, tp_idx, train_mode, num_of_classes):
     elif classifier_mode == 'mlp_replace_last':
         prev_fc.fc2 = torch.nn.Linear(prev_fc.hidden_size, num_class)
         model.fc = prev_fc
+    else:
+        raise NotImplementedError()
     
     if extractor_mode in ['scratch', 'finetune_pt', 'finetune_prev']:
         for p in model.parameters():
