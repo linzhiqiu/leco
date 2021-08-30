@@ -37,18 +37,19 @@ class TrainMode():
         self.tp_configs = tp_configs
 
 TRAIN_MODES = {
-    "none_0_scratch_1_scratch" : TrainMode(
+    "none_0_scratch_linear_1_scratch_linear" : TrainMode(
         None,
         [Phase('scratch', 'linear'), Phase('scratch', 'linear'),]
     ),
-    "none_0_scratch_1_finetune_prev_linear" : TrainMode(
+    "none_0_scratch_linear_1_finetune_prev_linear" : TrainMode(
         None,
         [Phase('scratch', 'linear'),Phase('finetune_prev', 'linear'),]
     ),
-    "none_0_scratch_1_finetune_prev_mlp" : TrainMode(
+    "none_0_scratch_linear_1_finetune_prev_mlp" : TrainMode(
         None,
         [Phase('scratch', 'linear'),Phase('finetune_prev', 'mlp'),]
     ),
+
     # resnet18_simclr
     "resnet18_simclr_0_freeze_pt_linear_1_freeze_pt_linear" : TrainMode(
         'resnet18_simclr',

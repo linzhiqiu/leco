@@ -17,10 +17,10 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 argparser = argparse.ArgumentParser()
 argparser.add_argument("--data_dir", 
                         default='/scratch/leco/',
-                        help="Where the dataset will be saved.")
+                        help="Where the dataset and final accuracy results will be saved.")
 argparser.add_argument("--model_save_dir", 
                         default='/data3/zhiqiul/self_supervised_models/resnet18/',
-                        help="Where the self-supervised pre-trained models will be saved.")
+                        help="Where the self-supervised pre-trained models were saved.")
 argparser.add_argument("--setup_mode",
                         type=str,
                         default='cifar10_buffer_2000',
@@ -38,6 +38,17 @@ argparser.add_argument("--hparam_str",
                         help="The hyperparameter mode")   
 argparser.add_argument('--seed', default=None, type=int,
                        help='seed for initializing training. ')
+
+def get_exp_str_from_train_mode(train_mode: configs.TrainMode, tp_idx: int):
+    if tp_idx == -1:
+        if train_mode.pretrained_mode == None:
+            return "none"
+        else:
+            return train_mode.pretrained_mode
+    elif tp_idx >= 0:
+        curr_config = train_mode.tp_configs[tp_idx]
+        curr_str = "_".join([curr_config.extractor_mode, curr_config.classifier_mode])
+        return f"_{tp_idx}_".join([get_exp_str_from_train_mode(train_mode, tp_idx-1), curr_str])
 
 def train(loaders,
           model,
@@ -57,7 +68,11 @@ def train(loaders,
         phases = ['train', 'test']
 
     # Save best training loss model
-    best_result = {'best_loss': None, 'best_acc': 0, 'best_epoch': None, 'best_model': None}
+    best_result = {'best_loss': None,
+                   'best_acc': 0,
+                   'best_epoch': None,
+                   'best_model': None
+                   }
 
     for epoch in range(0, epochs):
         print(f"Epoch {epoch}")
@@ -207,9 +222,9 @@ def start_training(model,
     return model, acc_result, best_result, avg_results
     
 
-def start_experiment(data_dir: str,
-                     model_save_dir: str,
-                     setup_mode_str: str,
+def start_experiment(data_dir: str, # where the data are saved, and datasets + model + final accuracy results will be saved
+                     model_save_dir: str, # where the self-supervised pretrained models are saved
+                     setup_mode_str: str, 
                      train_mode_str: str,
                      hparam_str: str,
                      seed=None):
@@ -235,35 +250,77 @@ def start_experiment(data_dir: str,
 
     train_subsets, testset, num_of_classes = dataset
     
-    train_mode_dir = os.path.join(setup_dir, train_mode_str)
-    makedirs(train_mode_dir)
-    train_mode = configs.TRAIN_MODES[train_mode_str]
-    exp_dir = os.path.join(train_mode_dir, hparam_str)
+    exp_dir = os.path.join(setup_dir, hparam_str, train_mode_str)
     makedirs(exp_dir)
+
+    train_mode = configs.TRAIN_MODES[train_mode_str]
     hparams_mode = hparams.HPARAMS[hparam_str]
+
+    train_mode_str_check = get_exp_str_from_train_mode(train_mode, tp_idx=1)
+    assert train_mode_str_check == train_mode_str
+    
+    interim_exp_dir = os.path.join(setup_dir, hparam_str)
+    makedirs(interim_exp_dir)
 
     model = None
     assert len(hparams_mode['hparams']) == len(train_mode.tp_configs)
     for tp_idx in range(len(train_mode.tp_configs)):
-        model, acc_result, best_result, avg_results = start_training(
-            model,
-            model_save_dir,
-            tp_idx,
-            train_mode,
-            hparams_mode,
-            train_subsets,
-            num_of_classes,
-            testset
-        )
         exp_dir_tp_idx = os.path.join(exp_dir, str(tp_idx))
         makedirs(exp_dir_tp_idx)
         exp_result_path = os.path.join(exp_dir_tp_idx, "result.ckpt")
-        save_obj_as_pickle(exp_result_path, {
-            'model' : model,
-            'acc_result' : acc_result,
-            'best_result' : best_result,
-            'avg_results' : avg_results
-        })
+
+        interim_exp_dir_tp_idx = os.path.join(interim_exp_dir,
+                                              get_exp_str_from_train_mode(train_mode, tp_idx=tp_idx))
+        makedirs(interim_exp_dir_tp_idx)
+        prev_result_path = os.path.join(interim_exp_dir_tp_idx, 'result.ckpt')
+        
+        if os.path.exists(exp_result_path):
+            if not os.path.exists(prev_result_path):
+                print('Previous model checkpoint does not exist.. Check for any bugs')
+                import pdb; pdb.set_trace()
+                
+        if os.path.exists(prev_result_path):
+            print(f"{tp_idx} time period already finished. Load from {prev_result_path}")
+            prev_result = load_pickle(prev_result_path)
+            # best_model_state_dict = prev_result['best_result']['best_model']
+            # model = update_model(model, model_save_dir, tp_idx, train_mode, num_of_classes)
+            # model.load_state_dict(best_model_state_dict)
+            model = prev_result['model']
+            acc_result = prev_result['acc_result']
+            best_result = prev_result['best_result']
+            avg_results = prev_result['avg_results']
+            if not os.path.exists(exp_result_path):
+                save_obj_as_pickle(exp_result_path, {
+                    'model' : model,
+                    'acc_result' : acc_result,
+                    'best_result' : best_result,
+                    'avg_results' : avg_results
+                })
+            else:
+                exp_result = load_pickle(exp_result_path)
+                if not acc_result == exp_result['acc_result']:
+                    import pdb; pdb.set_trace()
+        else:
+            # both prev_result and exp_result do not exist, therefore start training
+            model, acc_result, best_result, avg_results = start_training(
+                model,
+                model_save_dir,
+                tp_idx,
+                train_mode,
+                hparams_mode,
+                train_subsets,
+                num_of_classes,
+                testset,
+            )
+
+            for path in [exp_result_path, prev_result_path]:
+                save_obj_as_pickle(path, {
+                    'model' : model,
+                    'acc_result' : acc_result,
+                    'best_result' : best_result,
+                    'avg_results' : avg_results
+                })
+
 
 if __name__ == '__main__':
     args = argparser.parse_args()

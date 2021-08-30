@@ -75,10 +75,10 @@ def gather_exp(data_dir: str,
             setup_dir = os.path.join(data_dir, setup_mode, f"seed_{seed_str}")
             if not os.path.exists(setup_dir):
                 import pdb; pdb.set_trace()
-            for train_mode_str in train_mode_list:
-                train_mode_dir = os.path.join(setup_dir, train_mode_str)
-                for hparam_str in hparam_str_list:
-                    exp_dir = os.path.join(train_mode_dir, hparam_str)
+            for hparam_str in hparam_str_list:
+                hparam_dir = os.path.join(setup_dir, hparam_str)
+                for train_mode_str in train_mode_list:
+                    exp_dir = os.path.join(hparam_dir, train_mode_str)
                     tp_results = []
                     is_ready = True
                     for tp_idx in range(2):
