@@ -31,11 +31,16 @@ argparser.add_argument("--train_mode",
                         default='resnet18_simclr_0_freeze_pt_linear_1_freeze_pt_linear',
                         choices=configs.TRAIN_MODES.keys(),
                         help="The train mode") 
-argparser.add_argument("--hparam_str",
+argparser.add_argument("--hparam_0_str",
                         type=str,
-                        default='cifar10_default',
+                        default='cifar10_01',
                         choices=hparams.HPARAMS.keys(),
-                        help="The hyperparameter mode")   
+                        help="The hyperparameter mode for time period 0")  
+argparser.add_argument("--hparam_1_str",
+                        type=str,
+                        default='cifar10_01',
+                        choices=hparams.HPARAMS.keys(),
+                        help="The hyperparameter mode for time period 1")   
 argparser.add_argument('--seed', default=None, type=int,
                        help='seed for initializing training. ')
 
@@ -49,6 +54,10 @@ def get_exp_str_from_train_mode(train_mode: configs.TrainMode, tp_idx: int):
         curr_config = train_mode.tp_configs[tp_idx]
         curr_str = "_".join([curr_config.extractor_mode, curr_config.classifier_mode])
         return f"_{tp_idx}_".join([get_exp_str_from_train_mode(train_mode, tp_idx-1), curr_str])
+
+def get_exp_str_from_hparam_strs(hparam_strs, tp_idx: int):
+    hparam_strs = hparam_strs[:tp_idx+1]
+    return str(os.path.sep).join(hparam_strs)
 
 def train(loaders,
           model,
@@ -186,7 +195,7 @@ def start_training(model,
     batch_size = hparams_mode['batch']
     workers = hparams_mode['workers']
     
-    hparam_mode = hparams_mode['hparams'][tp_idx]
+    hparam_mode = hparams_mode['hparams']
     epochs = hparam_mode['epochs']
     optimizer = make_optimizer(model,
                                hparam_mode['optim'],
@@ -226,7 +235,7 @@ def start_experiment(data_dir: str, # where the data are saved, and datasets + m
                      model_save_dir: str, # where the self-supervised pretrained models are saved
                      setup_mode_str: str, 
                      train_mode_str: str,
-                     hparam_str: str,
+                     hparam_strs, # List of strs
                      seed=None):
     seed_str = f"seed_{seed}"
     if seed == None:
@@ -250,56 +259,29 @@ def start_experiment(data_dir: str, # where the data are saved, and datasets + m
 
     train_subsets, testset, num_of_classes = dataset
     
-    exp_dir = os.path.join(setup_dir, hparam_str, train_mode_str)
-    makedirs(exp_dir)
-
     train_mode = configs.TRAIN_MODES[train_mode_str]
-    hparams_mode = hparams.HPARAMS[hparam_str]
 
     train_mode_str_check = get_exp_str_from_train_mode(train_mode, tp_idx=1)
     assert train_mode_str_check == train_mode_str
     
-    interim_exp_dir = os.path.join(setup_dir, hparam_str)
-    makedirs(interim_exp_dir)
-
     model = None
-    assert len(hparams_mode['hparams']) == len(train_mode.tp_configs)
+    assert len(hparam_strs) == len(train_mode.tp_configs)
     for tp_idx in range(len(train_mode.tp_configs)):
-        exp_dir_tp_idx = os.path.join(exp_dir, str(tp_idx))
-        makedirs(exp_dir_tp_idx)
-        exp_result_path = os.path.join(exp_dir_tp_idx, "result.ckpt")
-
-        interim_exp_dir_tp_idx = os.path.join(interim_exp_dir,
-                                              get_exp_str_from_train_mode(train_mode, tp_idx=tp_idx))
+        interim_exp_dir_tp_idx = os.path.join(setup_dir,
+                                              get_exp_str_from_train_mode(train_mode, tp_idx=tp_idx),
+                                              get_exp_str_from_hparam_strs(hparam_strs, tp_idx=tp_idx))
         makedirs(interim_exp_dir_tp_idx)
-        prev_result_path = os.path.join(interim_exp_dir_tp_idx, 'result.ckpt')
         
+        hparams_mode = hparams.HPARAMS[hparam_strs[tp_idx]]
+        exp_result_path = os.path.join(interim_exp_dir_tp_idx, "result.ckpt")
+
         if os.path.exists(exp_result_path):
-            if not os.path.exists(prev_result_path):
-                print('Previous model checkpoint does not exist.. Check for any bugs')
-                import pdb; pdb.set_trace()
-                
-        if os.path.exists(prev_result_path):
-            print(f"{tp_idx} time period already finished. Load from {prev_result_path}")
-            prev_result = load_pickle(prev_result_path)
-            # best_model_state_dict = prev_result['best_result']['best_model']
-            # model = update_model(model, model_save_dir, tp_idx, train_mode, num_of_classes)
-            # model.load_state_dict(best_model_state_dict)
-            model = prev_result['model']
-            acc_result = prev_result['acc_result']
-            best_result = prev_result['best_result']
-            avg_results = prev_result['avg_results']
-            if not os.path.exists(exp_result_path):
-                save_obj_as_pickle(exp_result_path, {
-                    'model' : model,
-                    'acc_result' : acc_result,
-                    'best_result' : best_result,
-                    'avg_results' : avg_results
-                })
-            else:
-                exp_result = load_pickle(exp_result_path)
-                if not acc_result == exp_result['acc_result']:
-                    import pdb; pdb.set_trace()
+            print(f"{tp_idx} time period already finished. Load from {exp_result_path}")
+            exp_result = load_pickle(exp_result_path)
+            model = exp_result['model']
+            acc_result = exp_result['acc_result']
+            best_result = exp_result['best_result']
+            avg_results = exp_result['avg_results']
         else:
             # both prev_result and exp_result do not exist, therefore start training
             model, acc_result, best_result, avg_results = start_training(
@@ -313,13 +295,12 @@ def start_experiment(data_dir: str, # where the data are saved, and datasets + m
                 testset,
             )
 
-            for path in [exp_result_path, prev_result_path]:
-                save_obj_as_pickle(path, {
-                    'model' : model,
-                    'acc_result' : acc_result,
-                    'best_result' : best_result,
-                    'avg_results' : avg_results
-                })
+            save_obj_as_pickle(exp_result_path, {
+                'model' : model,
+                'acc_result' : acc_result,
+                'best_result' : best_result,
+                'avg_results' : avg_results
+            })
 
 
 if __name__ == '__main__':
@@ -328,5 +309,5 @@ if __name__ == '__main__':
                      args.model_save_dir,
                      args.setup_mode,
                      args.train_mode,
-                     args.hparam_str,
+                     [args.hparam_0_str, args.hparam_1_str],
                      seed=args.seed)
