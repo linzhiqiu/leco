@@ -15,7 +15,14 @@ import torchvision
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 PARTIAL_FEEDBACK_MODES = [
-    'partial_feedback', # Naively mix all history and current samples
+    'partial_feedback', # Naively mix all history and current samples, using modified (log out) peiyun's loss function
+    'partial_feedback_weight_history_0', # Naively mix all history and current samples, using modified (log out) peiyun's loss function, but weight history sample with weight 0 (sanity check)
+    'partial_feedback_weight_history_2', # Naively mix all history and current samples, using modified (log out) peiyun's loss function, but weight history sample with weight 2 and current sample with 0
+    'partial_feedback_weight_history_0.5', # Naively mix all history and current samples, using modified (log out) peiyun's loss function, but weight history sample with weight 0.5 and current sample with 1.5
+    'log_in_partial_feedback', # Naively mix all history and current samples, using peiyun's loss function with the summation outside log func
+    'log_in_partial_feedback_weight_history_0', # Naively mix all history and current samples, using peiyun's loss function, but weight history sample with weight 0 (sanity check)
+    'log_in_partial_feedback_weight_history_2', # Naively mix all history and current samples, using peiyun's loss function, but weight history sample with weight 2 and current sample with 0
+    'log_in_partial_feedback_weight_history_0.5', # Naively mix all history and current samples, using peiyun's loss function, but weight history sample with weight 0.5 and current sample with 1.5
     'no_history', # For test purpose, no history samples, using softmax loss (our modified version)
 ]
 
@@ -28,7 +35,7 @@ argparser.add_argument("--model_save_dir",
                         help="Where the self-supervised pre-trained models were saved.")
 argparser.add_argument("--setup_mode",
                         type=str,
-                        default='cifar10_buffer_2000',
+                        default='cifar10_buffer_2000_500',
                         choices=setups.SETUPS.keys(),
                         help="The dataset setup mode")  
 argparser.add_argument("--partial_feedback_mode",
@@ -77,10 +84,12 @@ def get_exp_str_from_partial_feedback(partial_feedback_mode : str, tp_idx : int)
 
 def is_better(select_criterion, curr_value, best_value):
     # Return True if curr_value is better than best_value
-    assert select_criterion in ['history_loss_per_epoch', 'history_acc_per_epoch',
-                                'current_loss_per_epoch', 'current_acc_per_epoch',
+    assert select_criterion in [
+                                # 'history_loss_per_epoch', 'history_acc_per_epoch',
+                                # 'current_loss_per_epoch', 'current_acc_per_epoch',
                                 'loss_per_epoch', 'acc_per_epoch']
-    if select_criterion in ['history_loss_per_epoch', 'current_loss_per_epoch', 'loss_per_epoch']:
+    # if select_criterion in ['history_loss_per_epoch', 'current_loss_per_epoch', 'loss_per_epoch']:
+    if select_criterion in ['loss_per_epoch']:
         return curr_value < best_value
     else:
         return curr_value > best_value
@@ -93,19 +102,16 @@ def train(loaders,
           tp_idx,
           loss_func, # loss_func takes model's output, time index, label as input, and return loss value
           hot_vector_func, # make a hot vector
-          select_criterion='current_loss_per_epoch'
+          select_criterion='acc_per_epoch'
           ):
     model = model.to(device)
 
     avg_results = {'train': {'history_loss_per_epoch': [], 'history_acc_per_epoch': [],
                              'current_loss_per_epoch': [], 'current_acc_per_epoch': [],
                              'loss_per_epoch': [], 'acc_per_epoch': [],},
+                   'val':   {'loss_per_epoch': [], 'acc_per_epoch': []},
                    'test':  {'loss_per_epoch': [], 'acc_per_epoch': []}}
-    if 'val' in loaders:
-        avg_results['val'] = {'loss_per_epoch': [], 'acc_per_epoch': []}
-        phases = ['train', 'val', 'test']
-    else:
-        phases = ['train', 'test']
+    phases = ['train', 'val', 'test']
 
     # Save best model based on select_criterion
     best_result = {'best_loss': None, # overall loss at best epoch
@@ -128,20 +134,20 @@ def train(loaders,
                 model.eval()
 
             running_loss = 0.0
-            running_loss_history = 0. # History sample loss
-            running_loss_current = 0. # Current sample loss
+            running_loss_history = 0. # History sample loss (only on train set)
+            running_loss_current = 0. # Current sample loss (only on train set)
             running_corrects = 0. # Overall correct count
-            running_corrects_history = 0. # History sample correct count
-            running_corrects_current = 0. # Current sample correct count
+            running_corrects_history = 0. # History sample correct count (only on train set)
+            running_corrects_current = 0. # Current sample correct count (only on train set)
             
             count = 0
-            count_history = 0
-            count_current = 0
+            count_history = 0 # (only on train set)
+            count_current = 0 # (only on train set)
 
             pbar = loaders[phase]
 
             for batch, data in enumerate(pbar):
-                if phase == 'train':
+                if phase in ['train', 'val']:
                     inputs, time_indices, labels = data
                 else:
                     inputs, labels = data
@@ -164,15 +170,7 @@ def train(loaders,
                     # The loss should be averaged across all samples
                     loss = loss_func(outputs, hot_vector)
                     
-                    # log_probability = torch.nn.functional.log_softmax(
-                    #     outputs, dim=1)
-                    # loss = criterion(log_probability, labels)
-
                     if phase == 'train':
-                        # log_probability = torch.nn.functional.log_softmax(
-                        #                         outputs, dim=1)
-                        # prev_loss = torch.nn.NLLLoss(reduction='mean')(log_probability, labels[tp_idx].cuda())
-                        # import pdb; pdb.set_trace()
                         loss.mean().backward()
                         optimizer.step()
 
@@ -203,33 +201,36 @@ def train(loaders,
                 avg_acc_current = float(running_corrects_current)/count_current
                 avg_results[phase]['history_acc_per_epoch'].append(avg_acc_history)
                 avg_results[phase]['current_acc_per_epoch'].append(avg_acc_current)
+                phase_str = f"(Hist) Loss {avg_loss_history:.4f}, Acc {avg_acc_history:.2%}; (Curr) Loss {avg_loss_current:.4f}, Acc {avg_acc_current:.2%}"
                 scheduler.step()
+            else:
+                phase_str = ""
+
+            if phase == 'val':
                 curr_value = avg_results[phase][select_criterion][-1]
                 if best_result['best_value'] == None or is_better(select_criterion, curr_value, best_result['best_value']):
                     print(
-                        f"Best {select_criterion} at epoch {epoch} being {curr_value} with current sample accuracy {avg_acc_current:.2%} and history sample accuracy {avg_acc_history:.2%}")
+                        # f"Best val {select_criterion} at epoch {epoch} being {curr_value} with current sample accuracy {avg_acc_current:.2%} and history sample accuracy {avg_acc_history:.2%}")
+                        f"Best val {select_criterion} at epoch {epoch} being {curr_value} | On train set this model achieves current sample accuracy {avg_acc_current:.2%} and history sample accuracy {avg_acc_history:.2%}")
                     best_result['best_epoch'] = epoch
                     best_result['best_acc'] = avg_acc
                     best_result['best_loss'] = avg_loss
-                    best_result['best_history_acc'] = avg_acc_history
-                    best_result['best_history_loss'] = avg_loss_history
-                    best_result['best_current_acc'] = avg_acc_current
-                    best_result['best_current_loss'] = avg_loss_current
+                    # best_result['best_history_acc'] = avg_acc_history
+                    # best_result['best_history_loss'] = avg_loss_history
+                    # best_result['best_current_acc'] = avg_acc_current
+                    # best_result['best_current_loss'] = avg_loss_current
                     best_result['best_value'] = curr_value
                     best_result['best_model'] = copy.deepcopy(model.state_dict())
-                phase_str = f"(Hist) Loss {avg_loss_history:.4f}, Acc {avg_acc_history:.2%}; (Curr) Loss {avg_loss_current:.4f}, Acc {avg_acc_current:.2%}"
-            else:
-                phase_str = ""
             print(
                 f"Epoch {epoch}: Average {phase} Loss {avg_loss:.4f}, Acc {avg_acc:.2%}; {phase_str}")
         print()
     print(
-        f"Test Accuracy (for best {select_criterion} model): {avg_results['test']['acc_per_epoch'][best_result['best_epoch']]:.2%}")
+        f"Test Accuracy (for best val {select_criterion} model): {avg_results['test']['acc_per_epoch'][best_result['best_epoch']]:.2%}")
     print(
         f"Best Test Accuracy overall: {max(avg_results['test']['acc_per_epoch']):.2%}")
     model.load_state_dict(best_result['best_model'])
     test_acc = test(loaders['test'], model, tp_idx)
-    print(f"Verify the best test accuracy for best {select_criterion} is indeed {test_acc:.2%}")
+    print(f"Verify the best test accuracy for best val {select_criterion} is indeed {test_acc:.2%}")
     acc_result = {phase: avg_results[phase]['acc_per_epoch'][best_result['best_epoch']]
                   for phase in phases}
     return model, acc_result, best_result, avg_results
@@ -282,14 +283,24 @@ class TimestampDataset(torch.utils.data.Dataset):
         return sample, time, label
         
 def get_train_set(partial_feedback_mode,
-                  train_subsets,
+                  train_val_subsets,
                   tp_idx):
     if partial_feedback_mode == 'no_history':
-        datasets = {tp_idx : train_subsets[tp_idx]} # Only the current train set is used
-    elif partial_feedback_mode == 'partial_feedback':
-        datasets = {idx : train_subsets[idx]
-                    for idx in range(tp_idx+1)}
-    return TimestampDataset(datasets)
+        train_datasets = {tp_idx : train_val_subsets[tp_idx][0]} # Only the current train set is used
+        val_datasets = {tp_idx : train_val_subsets[tp_idx][1]} # Only the current val set is used
+    elif partial_feedback_mode in ['partial_feedback', 
+                                   'partial_feedback_weight_history_0',
+                                   'partial_feedback_weight_history_2',
+                                   'partial_feedback_weight_history_0.5',
+                                   'log_in_partial_feedback',
+                                   'log_in_partial_feedback_weight_history_0',
+                                   'log_in_partial_feedback_weight_history_2',
+                                   'log_in_partial_feedback_weight_history_0.5',
+                                    ]:
+        train_datasets = {idx : train_val_subsets[idx][0]
+                                for idx in range(tp_idx+1)}
+        val_datasets = {tp_idx : train_val_subsets[tp_idx][1]}  # Only the current val set is used
+    return TimestampDataset(train_datasets), TimestampDataset(val_datasets)
 
 def get_make_hot_vector_func(superclass_to_subclass_idx,
                              num_of_classes,
@@ -311,16 +322,57 @@ def get_make_hot_vector_func(superclass_to_subclass_idx,
     return make_hot_vector
 
 def get_loss_func(partial_feedback_mode):
-    if partial_feedback_mode in ['no_history', 'partial_feedback']:
+    if partial_feedback_mode in ['no_history',
+                                 'partial_feedback',
+                                 'partial_feedback_weight_history_0',
+                                 'partial_feedback_weight_history_2',
+                                 'partial_feedback_weight_history_0.5',
+                                 ]:
         # Regular softmax loss if no_history
+        prefix_str = 'partial_feedback_weight_history_'
+        if prefix_str in partial_feedback_mode:
+            history_weight = float(partial_feedback_mode[len(prefix_str):])
+            current_weight = 2. - history_weight
+        else:
+            history_weight = current_weight = 1.
+
         def loss_func(outputs, hot_vector):
             hot_vector = hot_vector.to(outputs.device)
+            history_mask = hot_vector.sum(1) != 1.
+            current_mask = hot_vector.sum(1) == 1.
+            
             # prob = torch.nn.Softmax(dim=1)(outputs)
             log_prob = torch.nn.LogSoftmax(dim=1)(outputs)
-            # loss = -(torch.log(prob) * hot_vector).sum(dim=1)
+            # loss = -(torch.log(prob) * hot_vector).sum(dim=1) # This is not numerically stable
             loss = -(log_prob * hot_vector).sum(dim=1)
+            loss[history_mask] = loss[history_mask] * history_weight
+            loss[current_mask] = loss[current_mask] * current_weight
             return loss
         return loss_func
+    elif partial_feedback_mode in ['log_in_partial_feedback',
+                                   'log_in_partial_feedback_weight_history_0',
+                                   'log_in_partial_feedback_weight_history_2',
+                                   'log_in_partial_feedback_weight_history_0.5',]:
+        prefix_str = 'log_in_partial_feedback_weight_history_'
+        if prefix_str in partial_feedback_mode:
+            history_weight = float(partial_feedback_mode[len(prefix_str):])
+            current_weight = 2. - history_weight
+        else:
+            history_weight = current_weight = 1.
+
+        def loss_func(outputs, hot_vector):
+            history_mask = hot_vector.sum(1) != 1.
+            current_mask = hot_vector.sum(1) == 1.
+
+            hot_vector = hot_vector.to(outputs.device)
+
+            outputs = outputs - outputs.max(1)[0].unsqueeze(1)
+            loss = - ( (outputs * hot_vector).sum(1) - torch.log((torch.exp(outputs)).sum(1)))
+
+            loss[history_mask] = loss[history_mask] * history_weight
+            loss[current_mask] = loss[current_mask] * current_weight
+            return loss
+        return loss_func                        
     else:
         raise NotImplementedError()
 
@@ -329,7 +381,7 @@ def start_training_partial_feedback(model,
                                     tp_idx,
                                     train_mode,
                                     hparams_mode,
-                                    train_subsets,
+                                    train_val_subsets,
                                     num_of_classes,
                                     testset,
                                     partial_feedback_mode,
@@ -360,7 +412,7 @@ def start_training_partial_feedback(model,
                                                num_of_classes,
                                                tp_idx)
     loss_func = get_loss_func(partial_feedback_mode)
-    train_set = get_train_set(partial_feedback_mode, train_subsets, tp_idx)
+    train_set, val_set = get_train_set(partial_feedback_mode, train_val_subsets, tp_idx)
     loaders = {}
     loaders['train'] = torch.utils.data.DataLoader(
                            train_set,
@@ -368,6 +420,12 @@ def start_training_partial_feedback(model,
                            shuffle=True,
                            num_workers=workers
                        )
+    loaders['val'] = torch.utils.data.DataLoader(
+                         val_set,
+                         batch_size=batch_size,
+                         shuffle=True,
+                         num_workers=workers
+                     )
     loaders['test'] = torch.utils.data.DataLoader(
                            testset,
                            batch_size=batch_size,
@@ -422,7 +480,7 @@ def start_experiment(data_dir: str, # where the data are saved, and datasets + m
         save_obj_as_pickle(dataset_path, dataset)
         print(f"Dataset saved at {dataset_path}")
 
-    train_subsets, testset, num_of_classes = dataset
+    train_val_subsets, testset, num_of_classes = dataset
 
     superclass_to_subclass_idx = get_superclass_to_subclass_idx(testset.idx_to_superclass_idx,
                                                                 num_of_classes[0])
@@ -459,7 +517,7 @@ def start_experiment(data_dir: str, # where the data are saved, and datasets + m
                 tp_idx,
                 train_mode,
                 hparams_mode,
-                train_subsets,
+                train_val_subsets,
                 num_of_classes,
                 testset,
                 partial_feedback_mode,

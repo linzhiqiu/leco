@@ -23,7 +23,7 @@ argparser.add_argument("--model_save_dir",
                         help="Where the self-supervised pre-trained models were saved.")
 argparser.add_argument("--setup_mode",
                         type=str,
-                        default='cifar10_buffer_2000',
+                        default='cifar10_buffer_2000_500',
                         choices=setups.SETUPS.keys(),
                         help="The dataset setup mode")  
 argparser.add_argument("--train_mode",
@@ -69,14 +69,11 @@ def train(loaders,
     criterion = torch.nn.NLLLoss(reduction='mean')
 
     avg_results = {'train': {'loss_per_epoch': [], 'acc_per_epoch': []},
+                   'val':   {'loss_per_epoch': [], 'acc_per_epoch': []},
                    'test':  {'loss_per_epoch': [], 'acc_per_epoch': []}}
-    if 'val' in loaders:
-        avg_results['val'] = {'loss_per_epoch': [], 'acc_per_epoch': []}
-        phases = ['train', 'val', 'test']
-    else:
-        phases = ['train', 'test']
+    phases = ['train', 'val', 'test']
 
-    # Save best training loss model
+    # Save best validation accuracy model
     best_result = {'best_loss': None,
                    'best_acc': 0,
                    'best_epoch': None,
@@ -111,8 +108,7 @@ def train(loaders,
                     outputs = model(inputs)
                     _, preds = torch.max(outputs, 1)
 
-                    log_probability = torch.nn.functional.log_softmax(
-                        outputs, dim=1)
+                    log_probability = torch.nn.functional.log_softmax(outputs, dim=1)
                     loss = criterion(log_probability, labels)
 
                     if phase == 'train':
@@ -129,10 +125,10 @@ def train(loaders,
             avg_results[phase]['acc_per_epoch'].append(avg_acc)
             if phase == 'train':
                 scheduler.step()
-
-                if best_result['best_loss'] == None or avg_loss < best_result['best_loss']:
+            if phase == 'val':
+                if best_result['best_acc'] == None or avg_acc > best_result['best_acc']:
                     print(
-                        f"Best training loss at epoch {epoch} being {avg_loss} with accuracy {avg_acc}")
+                        f"Best validation accuracy at epoch {epoch} being {avg_acc} with loss {avg_loss}")
                     best_result['best_epoch'] = epoch
                     best_result['best_acc'] = avg_acc
                     best_result['best_loss'] = avg_loss
@@ -142,12 +138,12 @@ def train(loaders,
                 f"Epoch {epoch}: Average {phase} Loss {avg_loss}, Accuracy {avg_acc:.2%}")
         print()
     print(
-        f"Test Accuracy (for best training loss model): {avg_results['test']['acc_per_epoch'][best_result['best_epoch']]:.2%}")
+        f"Test Accuracy (for best validation accuracy model): {avg_results['test']['acc_per_epoch'][best_result['best_epoch']]:.2%}")
     print(
         f"Best Test Accuracy overall: {max(avg_results['test']['acc_per_epoch']):.2%}")
     model.load_state_dict(best_result['best_model'])
     test_acc = test(loaders['test'], model, tp_idx)
-    print(f"Verify the best test accuracy for best training loss is indeed {test_acc:.2%}")
+    print(f"Verify the best test accuracy for best validation accuracy is indeed {test_acc:.2%}")
     acc_result = {phase: avg_results[phase]['acc_per_epoch'][best_result['best_epoch']]
                   for phase in phases}
     return model, acc_result, best_result, avg_results
@@ -182,7 +178,7 @@ def start_training(model,
                    tp_idx,
                    train_mode,
                    hparams_mode,
-                   train_subsets,
+                   train_val_subsets,
                    num_of_classes,
                    testset):
     if tp_idx == 0:
@@ -208,11 +204,17 @@ def start_training(model,
     
     loaders = {}
     loaders['train'] = torch.utils.data.DataLoader(
-                           train_subsets[tp_idx],
+                           train_val_subsets[tp_idx][0],
                            batch_size=batch_size,
                            shuffle=True,
                            num_workers=workers
                        )
+    loaders['val'] = torch.utils.data.DataLoader(
+                         train_val_subsets[tp_idx][1],
+                         batch_size=batch_size,
+                         shuffle=True,
+                         num_workers=workers
+                     )
     loaders['test'] = torch.utils.data.DataLoader(
                            testset,
                            batch_size=batch_size,
@@ -257,7 +259,7 @@ def start_experiment(data_dir: str, # where the data are saved, and datasets + m
         save_obj_as_pickle(dataset_path, dataset)
         print(f"Dataset saved at {dataset_path}")
 
-    train_subsets, testset, num_of_classes = dataset
+    train_val_subsets, testset, num_of_classes = dataset
     
     train_mode = configs.TRAIN_MODES[train_mode_str]
 
@@ -290,7 +292,7 @@ def start_experiment(data_dir: str, # where the data are saved, and datasets + m
                 tp_idx,
                 train_mode,
                 hparams_mode,
-                train_subsets,
+                train_val_subsets,
                 num_of_classes,
                 testset,
             )

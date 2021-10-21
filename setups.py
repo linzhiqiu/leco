@@ -33,10 +33,10 @@ CIFAR10_HIERARCHY = {
 }
 
 SETUPS = {
-    'cifar10_buffer_2000' : Setup(
+    'cifar10_buffer_2000_500' : Setup(
         'CIFAR10',
         CIFAR10_HIERARCHY,
-        tp_buffers=[2000, 2000]
+        tp_buffers=[(2000, 500), (2000, 500)] # each element is a tuple of (train_set_size:int, val_set_size:int)
     ),
 }
 
@@ -95,11 +95,12 @@ def generate_dataset(data_dir, setup : Setup):
         indices_trainset = list(range(len_of_trainset))
         random.shuffle(indices_trainset)
         
-        train_subsets = []
-        for _, tp_buffer in enumerate(setup.tp_buffers):
-            indices_tp, indices_trainset = indices_trainset[:tp_buffer], indices_trainset[tp_buffer:]
-            train_subsets.append(torch.utils.data.Subset(trainset, indices_tp))
-        return train_subsets, testset, (num_of_superclasses, num_of_subclasses)
+        train_val_subsets = []
+        for _, (tp_buffer_train, tp_buffer_val) in enumerate(setup.tp_buffers):
+            indices_tp_train, indices_tp_val = indices_trainset[:tp_buffer_train], indices_trainset[tp_buffer_train:tp_buffer_train+tp_buffer_val]
+            indices_trainset = indices_trainset[tp_buffer_train+tp_buffer_val:]
+            train_val_subsets.append((torch.utils.data.Subset(trainset, indices_tp_train), torch.utils.data.Subset(trainset, indices_tp_val)) )
+        return train_val_subsets, testset, (num_of_superclasses, num_of_subclasses)
     else:
         raise NotImplementedError()
 
