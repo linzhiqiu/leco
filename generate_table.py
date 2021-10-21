@@ -7,11 +7,17 @@ from util import load_pickle, makedirs
 import hparams
 import setups
 from tabulate import tabulate
+from train import get_exp_str_from_train_mode, get_exp_str_from_hparam_strs
+from train_partial_feedback import get_exp_str_from_partial_feedback
+import configs
 
 argparser = argparse.ArgumentParser()
 argparser.add_argument("--data_dir", 
                         default='/scratch/leco/',
                         help="Where the dataset are saved.")
+argparser.add_argument("--partial_feedback_mode", 
+                        default=None, type=str,
+                        help="If used partial feedback, input the mode")
 SEED_LIST = [None, 1, 10, 100, 1000]
 
 
@@ -45,10 +51,10 @@ def to_str(result, formatter='%'):
         return f"{mean:.2f}+-{std:.2f}"
 
 def mean(lst):
-    return np.array(lst).mean()
+    return float(np.array(lst).mean())
 
 def std(lst):
-    return np.array(lst).std()
+    return float(np.array(lst).std())
 
 def get_avg_result_lists(result_dict):
     lsts = []
@@ -95,7 +101,7 @@ def get_best_result_lists(result_dict, num_of_exp=5):
                     tp_1_trains.append(result_dict[train_mode_str][hparam_0_str][hparam_1_str][seed_str][1]['train_acc'])
                     tp_1_tests.append(result_dict[train_mode_str][hparam_0_str][hparam_1_str][seed_str][1]['test_acc'])
                 if not len(tp_0_epochs) == num_of_exp:
-                    print(f"Train mode {train_mode_str}, HParam 0 {hparam_0_str}, HParam 1 {hparam_1_str}, not having enough experiments finished ({len(tp_0_epochs) out of {num_of_exp}})")
+                    print(f"Train mode {train_mode_str}, HParam 0 {hparam_0_str}, HParam 1 {hparam_1_str}, not having enough experiments finished ({len(tp_0_epochs)} out of {num_of_exp})")
                     import pdb; pdb.set_trace()
                     continue
                 
@@ -129,7 +135,7 @@ def get_best_result_lists(result_dict, num_of_exp=5):
         best_hparam_0_test_acc = None
         for hparam_0_str in exp_dict[train_mode_str]:
             hparam_0_test_acc = exp_dict[train_mode_str][hparam_0_str]['result']['test_acc'][0]
-            if best_hparam_0_test_acc == None or hparam_0_test_acc > best_hparam_0_test_acc:
+            if type(best_hparam_0_test_acc) == type(None) or hparam_0_test_acc > best_hparam_0_test_acc[0]:
                 best_hparam_0_str = hparam_0_str
                 best_hparam_0_test_acc = exp_dict[train_mode_str][hparam_0_str]['result']['test_acc']
                 best_hparam_0_train_acc = exp_dict[train_mode_str][hparam_0_str]['result']['train_acc']
@@ -137,8 +143,10 @@ def get_best_result_lists(result_dict, num_of_exp=5):
 
         best_hparam_1_test_acc = None
         for hparam_1_str in exp_dict[train_mode_str][best_hparam_0_str]:
-            hparam_1_test_acc = exp_dict[train_mode_str][best_hparam_0_str][hparam_1_str]['test_acc']
-            if best_hparam_1_test_acc == None or hparam_1_test_acc > best_hparam_1_test_acc:
+            if hparam_1_str == 'result':
+                continue
+            hparam_1_test_acc = exp_dict[train_mode_str][best_hparam_0_str][hparam_1_str]['test_acc'][0]
+            if type(best_hparam_1_test_acc) == type(None) or hparam_1_test_acc > best_hparam_1_test_acc[0]:
                 best_hparam_1_str = hparam_1_str
                 best_hparam_1_test_acc = exp_dict[train_mode_str][best_hparam_0_str][hparam_1_str]['test_acc']
                 best_hparam_1_train_acc = exp_dict[train_mode_str][best_hparam_0_str][hparam_1_str]['train_acc']
@@ -150,9 +158,12 @@ def get_best_result_lists(result_dict, num_of_exp=5):
                         
 
 def gather_exp(data_dir: str,
+               partial_feedback_mode=None,
                seed_list=SEED_LIST):
 
     table_dir = os.path.join(data_dir, 'tables')
+    if partial_feedback_mode:
+        table_dir = os.path.join(table_dir, partial_feedback_mode)
     makedirs(table_dir)
     setup_list = list(setups.SETUPS.keys())
     train_mode_list = list(configs.TRAIN_MODES.keys())
@@ -169,12 +180,15 @@ def gather_exp(data_dir: str,
             for hparam_0_str in hparam_str_list:
                 for hparam_1_str in hparam_str_list:
                     for train_mode_str in train_mode_list:
-                        exp_dir = os.path.join(setup_dir, train_mode_str, hparam_0_str, hparam_1_str)
                         tp_results = []
                         is_ready = True
+                        train_mode = configs.TRAIN_MODES[train_mode_str]
                         for tp_idx in range(2):
-                            exp_dir_tp_idx = os.path.join(exp_dir, str(tp_idx))
-                            exp_result_path = os.path.join(exp_dir_tp_idx, "result.ckpt")
+                            exp_result_path = os.path.join(setup_dir,
+                                                            get_exp_str_from_train_mode(train_mode, tp_idx=tp_idx),
+                                                            get_exp_str_from_partial_feedback(partial_feedback_mode, tp_idx=tp_idx), #CHANGE
+                                                            get_exp_str_from_hparam_strs([hparam_0_str, hparam_1_str], tp_idx=tp_idx),
+                                                            'result.ckpt')
                             if os.path.exists(exp_result_path):
                                 exp_result = load_pickle(exp_result_path)
                                 best_epoch = exp_result['best_result']['best_epoch']
@@ -222,4 +236,5 @@ def gather_exp(data_dir: str,
 
 if __name__ == '__main__':
     args = argparser.parse_args()
-    gather_exp(args.data_dir)
+    gather_exp(args.data_dir,
+               args.partial_feedback_mode)

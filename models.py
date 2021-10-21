@@ -76,7 +76,7 @@ def update_model(model, model_save_dir, tp_idx, train_mode, num_of_classes):
     if tp_idx > 0 and classifier_mode == 'mlp_replace_last':
         prev_fc = copy.deepcopy(model.fc)
     
-    if extractor_mode in ['scratch', 'finetune_pt', 'freeze_pt']:
+    if extractor_mode in ['scratch', 'finetune_pt', 'freeze_pt', 'freeze_random']:
         model = load_model(model_save_dir, train_mode.pretrained_mode)
     elif extractor_mode in ['finetune_prev', 'freeze_prev']:
         print("resume from previous feature extractor checkpoint")
@@ -95,7 +95,7 @@ def update_model(model, model_save_dir, tp_idx, train_mode, num_of_classes):
     if extractor_mode in ['scratch', 'finetune_pt', 'finetune_prev']:
         for p in model.parameters():
             p.requires_grad = True
-    elif extractor_mode in ['freeze_pt', 'freeze_prev']:
+    elif extractor_mode in ['freeze_pt', 'freeze_prev', 'freeze_random']:
         for p in model.parameters():
             p.requires_grad = False
         for p in model.fc.parameters():

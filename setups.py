@@ -37,7 +37,7 @@ SETUPS = {
         'CIFAR10',
         CIFAR10_HIERARCHY,
         tp_buffers=[2000, 2000]
-    )
+    ),
 }
 
 class TwoLevelDataset(Dataset):
@@ -52,6 +52,7 @@ class TwoLevelDataset(Dataset):
         sample, subclass_idx = self.dataset[index]
         superclass_idx = self.idx_to_superclass_idx[subclass_idx]
         return sample, (superclass_idx, subclass_idx)
+
 
 def generate_dataset(data_dir, setup : Setup):
     if setup.dataset_name == 'CIFAR10':
@@ -82,11 +83,11 @@ def generate_dataset(data_dir, setup : Setup):
         #     testset, batch_size=100, shuffle=False, num_workers=2)
 
         class_to_idx = testset.class_to_idx
-        idx_to_subclass = {class_to_idx[class_name] : class_name for class_name in class_to_idx}
+        idx_to_subclass_name = {class_to_idx[class_name] : class_name for class_name in class_to_idx}
         idx_to_superclass_idx = {idx : idx_of_superclass(idx, setup.class_hierarchy, class_to_idx)
-                                 for idx in idx_to_subclass}
+                                 for idx in idx_to_subclass_name}
         num_of_superclasses = len(setup.class_hierarchy.keys())
-        num_of_subclasses = len(idx_to_subclass.keys())
+        num_of_subclasses = len(idx_to_subclass_name.keys())
         trainset = TwoLevelDataset(trainset, idx_to_superclass_idx)
         testset = TwoLevelDataset(testset, idx_to_superclass_idx)
         

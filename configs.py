@@ -14,7 +14,8 @@ EXTRACTOR_MODES = [
     'finetune_pt', # Finetune from pre-trained model
     'freeze_pt', # Freeze pre-trained model
     'finetune_prev', # Finetune model from last timestamp
-    'freeze_prev' # Freeze model from last timestamp
+    'freeze_prev', # Freeze model from last timestamp
+    'freeze_random' # Freeze model from random initialization
 ]
 
 CLASSIFER_MODES = [
@@ -49,6 +50,22 @@ TRAIN_MODES = {
         None,
         [Phase('scratch', 'linear'),Phase('finetune_prev', 'mlp'),]
     ),
+    "none_0_scratch_linear_1_freeze_prev_linear" : TrainMode(
+        None,
+        [Phase('scratch', 'linear'), Phase('freeze_prev', 'linear'),]
+    ),
+    "none_0_scratch_linear_1_freeze_prev_mlp" : TrainMode(
+        None,
+        [Phase('scratch', 'linear'),Phase('freeze_prev', 'mlp'),]
+    ),
+    "none_0_scratch_linear_1_freeze_random_linear" : TrainMode(
+        None,
+        [Phase('scratch', 'linear'), Phase('freeze_random', 'linear'),]
+    ),
+    "none_0_scratch_linear_1_freeze_random_mlp" : TrainMode(
+        None,
+        [Phase('scratch', 'linear'),Phase('freeze_random', 'mlp'),]
+    ),
 
     # resnet18_simclr
     "resnet18_simclr_0_freeze_pt_linear_1_freeze_pt_linear" : TrainMode(
@@ -74,6 +91,14 @@ TRAIN_MODES = {
     "resnet18_simclr_0_finetune_pt_linear_1_finetune_prev_mlp" : TrainMode(
         'resnet18_simclr',
         [Phase('finetune_pt', 'linear'),Phase('finetune_prev', 'mlp'),]
+    ),
+    "resnet18_simclr_0_finetune_pt_linear_1_freeze_prev_linear" : TrainMode(
+        'resnet18_simclr',
+        [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'linear'),]
+    ),
+    "resnet18_simclr_0_finetune_pt_linear_1_freeze_prev_mlp" : TrainMode(
+        'resnet18_simclr',
+        [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'mlp'),]
     ),
 
     # resnet18_simclr_pl
@@ -101,6 +126,15 @@ TRAIN_MODES = {
         'resnet18_simclr_pl',
         [Phase('finetune_pt', 'linear'),Phase('finetune_prev', 'mlp'),]
     ),
+    "resnet18_simclr_pl_0_finetune_pt_linear_1_freeze_prev_linear" : TrainMode(
+        'resnet18_simclr_pl',
+        [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'linear'),]
+    ),
+    "resnet18_simclr_pl_0_finetune_pt_linear_1_freeze_prev_mlp" : TrainMode(
+        'resnet18_simclr_pl',
+        [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'mlp'),]
+    ),
+
 
     # resnet18_moco_v2_pl
     "resnet18_moco_v2_pl_0_freeze_pt_linear_1_freeze_pt_linear" : TrainMode(
@@ -127,6 +161,14 @@ TRAIN_MODES = {
         'resnet18_moco_v2_pl',
         [Phase('finetune_pt', 'linear'),Phase('finetune_prev', 'mlp'),]
     ),
+    "resnet18_moco_v2_pl_0_finetune_pt_linear_1_freeze_prev_linear" : TrainMode(
+        'resnet18_moco_v2_pl',
+        [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'linear'),]
+    ),
+    "resnet18_moco_v2_pl_0_finetune_pt_linear_1_freeze_prev_mlp" : TrainMode(
+        'resnet18_moco_v2_pl',
+        [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'mlp'),]
+    ),
 
     # resnet18_byol_pl
     "resnet18_byol_pl_0_freeze_pt_linear_1_freeze_pt_linear" : TrainMode(
@@ -152,5 +194,13 @@ TRAIN_MODES = {
     "resnet18_byol_pl_0_finetune_pt_linear_1_finetune_prev_mlp" : TrainMode(
         'resnet18_byol_pl',
         [Phase('finetune_pt', 'linear'),Phase('finetune_prev', 'mlp'),]
+    ),
+    "resnet18_byol_pl_0_finetune_pt_linear_1_freeze_prev_linear" : TrainMode(
+        'resnet18_byol_pl',
+        [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'linear'),]
+    ),
+    "resnet18_byol_pl_0_finetune_pt_linear_1_freeze_prev_mlp" : TrainMode(
+        'resnet18_byol_pl',
+        [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'mlp'),]
     ),
 }
