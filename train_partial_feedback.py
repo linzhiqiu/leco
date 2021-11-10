@@ -84,11 +84,7 @@ def get_exp_str_from_partial_feedback(partial_feedback_mode : str, tp_idx : int)
 
 def is_better(select_criterion, curr_value, best_value):
     # Return True if curr_value is better than best_value
-    assert select_criterion in [
-                                # 'history_loss_per_epoch', 'history_acc_per_epoch',
-                                # 'current_loss_per_epoch', 'current_acc_per_epoch',
-                                'loss_per_epoch', 'acc_per_epoch']
-    # if select_criterion in ['history_loss_per_epoch', 'current_loss_per_epoch', 'loss_per_epoch']:
+    assert select_criterion in ['loss_per_epoch', 'acc_per_epoch']
     if select_criterion in ['loss_per_epoch']:
         return curr_value < best_value
     else:
@@ -186,12 +182,11 @@ def train(loaders,
                 running_corrects += corrects.sum().item()
                 running_corrects_current += corrects[time_indices==tp_idx].sum().item()
                 running_corrects_history += corrects[time_indices!=tp_idx].sum().item()
-                
-            avg_loss = float(running_loss)/count
-            avg_acc = float(running_corrects)/count
-            avg_results[phase]['loss_per_epoch'].append(avg_loss)
-            avg_results[phase]['acc_per_epoch'].append(avg_acc)
+
+            # Note that val set still has previous timestamp data  
+
             if phase == 'train':
+                scheduler.step()
                 avg_loss_history = float(running_loss_history)/count_history if count_history != 0 else 0.
                 avg_loss_current = float(running_loss_current)/count_current
                 avg_results[phase]['history_loss_per_epoch'].append(avg_loss_history)
@@ -202,9 +197,16 @@ def train(loaders,
                 avg_results[phase]['history_acc_per_epoch'].append(avg_acc_history)
                 avg_results[phase]['current_acc_per_epoch'].append(avg_acc_current)
                 phase_str = f"(Hist) Loss {avg_loss_history:.4f}, Acc {avg_acc_history:.2%}; (Curr) Loss {avg_loss_current:.4f}, Acc {avg_acc_current:.2%}"
-                scheduler.step()
+
+                avg_loss = float(running_loss)/count
+                avg_acc = float(running_corrects)/count
             else:
                 phase_str = ""
+                avg_loss = float(running_loss_current)/count_current
+                avg_acc = float(running_corrects_current)/count_current
+            
+            avg_results[phase]['loss_per_epoch'].append(avg_loss)
+            avg_results[phase]['acc_per_epoch'].append(avg_acc)
 
             if phase == 'val':
                 curr_value = avg_results[phase][select_criterion][-1]

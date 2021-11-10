@@ -40,8 +40,23 @@ CIFAR10_HPARAMS_01 = {
     },
 }
 
+CIFAR10_HPARAMS_02 = {
+    'batch' : 128,
+    'workers' : 4,
+    'hparams' : {
+        'optim' : 'sgd',
+        'weight_decay' : 5e-4,
+        'momentum' : 0.9,
+        'lr' : 0.2,
+        'epochs' : 200,
+        'decay_epochs': 60,
+        'decay_by' : 0.1,
+    },
+}
+
 HPARAMS = {
     'cifar10_01' : CIFAR10_HPARAMS_01,
+    'cifar10_02' : CIFAR10_HPARAMS_02,
     'cifar10_001' : CIFAR10_HPARAMS_001,
     'cifar10_0001' : CIFAR10_HPARAMS_0001,
 }

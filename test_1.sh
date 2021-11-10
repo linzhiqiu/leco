@@ -1,0 +1,4 @@
+sh train_partial_feedback.sh log_in_partial_feedback
+sh train_partial_feedback.sh log_in_partial_feedback_weight_history_0
+sh train_partial_feedback.sh log_in_partial_feedback_weight_history_2
+sh train_partial_feedback.sh log_in_partial_feedback_weight_history_0.5
