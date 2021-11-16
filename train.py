@@ -7,6 +7,7 @@ from util import load_pickle, save_obj_as_pickle, makedirs
 from models import update_model, make_optimizer, make_scheduler
 import hparams
 import setups
+import print_utils
 import copy
 
 
@@ -31,33 +32,16 @@ argparser.add_argument("--train_mode",
                         default='resnet18_simclr_0_freeze_pt_linear_1_freeze_pt_linear',
                         choices=configs.TRAIN_MODES.keys(),
                         help="The train mode") 
-argparser.add_argument("--hparam_0_str",
+argparser.add_argument('--hparam_strs', nargs='+', default=[],
+                       help='The hparam to use for each time period. If not specified, then use hparam_candidate. Should be used to specify the best hparam for all previous time periods.')
+argparser.add_argument("--hparam_candidate",
                         type=str,
-                        default='cifar10_01',
-                        choices=hparams.HPARAMS.keys(),
-                        help="The hyperparameter mode for time period 0")  
-argparser.add_argument("--hparam_1_str",
-                        type=str,
-                        default='cifar10_01',
-                        choices=hparams.HPARAMS.keys(),
-                        help="The hyperparameter mode for time period 1")   
+                        default='cifar',
+                        choices=hparams.HPARAM_CANDIDATES.keys(),
+                        help="The hyperparameter candidates (str) for next time period")
 argparser.add_argument('--seed', default=None, type=int,
                        help='seed for initializing training. ')
 
-def get_exp_str_from_train_mode(train_mode: configs.TrainMode, tp_idx: int):
-    if tp_idx == -1:
-        if train_mode.pretrained_mode == None:
-            return "none"
-        else:
-            return train_mode.pretrained_mode
-    elif tp_idx >= 0:
-        curr_config = train_mode.tp_configs[tp_idx]
-        curr_str = "_".join([curr_config.extractor_mode, curr_config.classifier_mode])
-        return f"_{tp_idx}_".join([get_exp_str_from_train_mode(train_mode, tp_idx-1), curr_str])
-
-def get_exp_str_from_hparam_strs(hparam_strs, tp_idx: int):
-    hparam_strs = hparam_strs[:tp_idx+1]
-    return str(os.path.sep).join(hparam_strs)
 
 def train(loaders,
           model,
@@ -237,7 +221,8 @@ def start_experiment(data_dir: str, # where the data are saved, and datasets + m
                      model_save_dir: str, # where the self-supervised pretrained models are saved
                      setup_mode_str: str, 
                      train_mode_str: str,
-                     hparam_strs, # List of strs
+                     hparam_strs, # A list of hparam str to load
+                     hparam_candidate : str, # The list of hparam to try for next time period (tp_idx = len(hparam_strs))
                      seed=None):
     seed_str = f"seed_{seed}"
     if seed == None:
@@ -259,51 +244,62 @@ def start_experiment(data_dir: str, # where the data are saved, and datasets + m
         save_obj_as_pickle(dataset_path, dataset)
         print(f"Dataset saved at {dataset_path}")
 
-    train_val_subsets, testset, num_of_classes = dataset
+    train_val_subsets, testset, all_tp_info, leaf_idx_to_all_class_idx = dataset
     
     train_mode = configs.TRAIN_MODES[train_mode_str]
 
-    train_mode_str_check = get_exp_str_from_train_mode(train_mode, tp_idx=1)
-    assert train_mode_str_check == train_mode_str
+    # train_mode_str_check = print_utils.get_exp_str_from_train_mode(train_mode, tp_idx=1)
+    # assert train_mode_str_check == train_mode_str
     
     model = None
-    assert len(hparam_strs) == len(train_mode.tp_configs)
-    for tp_idx in range(len(train_mode.tp_configs)):
-        interim_exp_dir_tp_idx = os.path.join(setup_dir,
-                                              get_exp_str_from_train_mode(train_mode, tp_idx=tp_idx),
-                                              get_exp_str_from_hparam_strs(hparam_strs, tp_idx=tp_idx))
-        makedirs(interim_exp_dir_tp_idx)
-        
-        hparams_mode = hparams.HPARAMS[hparam_strs[tp_idx]]
-        exp_result_path = os.path.join(interim_exp_dir_tp_idx, "result.ckpt")
+    # assert len(hparam_strs) == len(train_mode.tp_configs)
+    # for tp_idx in range(len(train_mode.tp_configs)):
+    for tp_idx in range(len(train_val_subsets)):
+        if tp_idx >= len(hparam_strs):
+            for hparams_str in hparams.HPARAM_CANDIDATES[hparam_candidate]:
+                hparams_mode = hparams.HPARAMS[hparams_str]
+                interim_exp_dir_tp_idx = os.path.join(setup_dir,
+                                                      print_utils.get_exp_str_from_train_mode(train_mode, tp_idx=tp_idx),
+                                                      print_utils.get_exp_str_from_hparam_strs(hparam_strs+[hparams_str], tp_idx=tp_idx))
+                makedirs(interim_exp_dir_tp_idx)
+                exp_result_path = os.path.join(interim_exp_dir_tp_idx, "result.ckpt")
+                if os.path.exists(exp_result_path):
+                    print(f"{tp_idx} time period already finished for {hparams_str}")
+                else:
+                    new_model, acc_result, best_result, avg_results = start_training(
+                        copy.deepcopy(model),
+                        model_save_dir,
+                        tp_idx,
+                        train_mode,
+                        hparams_mode,
+                        train_val_subsets,
+                        [info['num_of_classes'] for info in all_tp_info],
+                        testset,
+                    )
 
-        if os.path.exists(exp_result_path):
-            print(f"{tp_idx} time period already finished. Load from {exp_result_path}")
-            exp_result = load_pickle(exp_result_path)
-            model = exp_result['model']
-            acc_result = exp_result['acc_result']
-            best_result = exp_result['best_result']
-            avg_results = exp_result['avg_results']
+                    save_obj_as_pickle(exp_result_path, {
+                        'model' : new_model,
+                        'acc_result' : acc_result,
+                        'best_result' : best_result,
+                        'avg_results' : avg_results
+                    })
+            print(f"Finished for {tp_idx} time period.")
+            break
         else:
-            # both prev_result and exp_result do not exist, therefore start training
-            model, acc_result, best_result, avg_results = start_training(
-                model,
-                model_save_dir,
-                tp_idx,
-                train_mode,
-                hparams_mode,
-                train_val_subsets,
-                num_of_classes,
-                testset,
-            )
-
-            save_obj_as_pickle(exp_result_path, {
-                'model' : model,
-                'acc_result' : acc_result,
-                'best_result' : best_result,
-                'avg_results' : avg_results
-            })
-
+            interim_exp_dir_tp_idx = os.path.join(setup_dir,
+                                                  print_utils.get_exp_str_from_train_mode(train_mode, tp_idx=tp_idx),
+                                                  print_utils.get_exp_str_from_hparam_strs(hparam_strs, tp_idx=tp_idx))
+            makedirs(interim_exp_dir_tp_idx)
+            exp_result_path = os.path.join(interim_exp_dir_tp_idx, "result.ckpt")
+            # Load the model
+            if not os.path.exists(exp_result_path):
+                print("Please specify the hparam for an experiment that is finished.")
+                import pdb; pdb.set_trace()
+                kill(0)
+            else:
+                print(f"{tp_idx} time period already finished. Load from {exp_result_path}")
+                exp_result = load_pickle(exp_result_path)
+                model = exp_result['model']
 
 if __name__ == '__main__':
     args = argparser.parse_args()
@@ -311,5 +307,6 @@ if __name__ == '__main__':
                      args.model_save_dir,
                      args.setup_mode,
                      args.train_mode,
-                     [args.hparam_0_str, args.hparam_1_str],
+                     args.hparam_strs,
+                     args.hparam_candidate,
                      seed=args.seed)

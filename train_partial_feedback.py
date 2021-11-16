@@ -7,6 +7,7 @@ from util import load_pickle, save_obj_as_pickle, makedirs
 from models import update_model, make_optimizer, make_scheduler
 import hparams
 import setups
+import print_utils
 import copy
 
 
@@ -48,39 +49,15 @@ argparser.add_argument("--train_mode",
                         default='resnet18_simclr_0_freeze_pt_linear_1_freeze_pt_linear',
                         choices=configs.TRAIN_MODES.keys(),
                         help="The train mode") 
-argparser.add_argument("--hparam_0_str",
+argparser.add_argument('--hparam_strs', nargs='+', default=[],
+                       help='The hparam to use for each time period. If not specified, then use hparam_candidate. Should be used to specify the best hparam for all previous time periods.')
+argparser.add_argument("--hparam_candidate",
                         type=str,
-                        default='cifar10_01',
-                        choices=hparams.HPARAMS.keys(),
-                        help="The hyperparameter mode for time period 0")  
-argparser.add_argument("--hparam_1_str",
-                        type=str,
-                        default='cifar10_01',
-                        choices=hparams.HPARAMS.keys(),
-                        help="The hyperparameter mode for time period 1")   
-argparser.add_argument('--seed', default=None, type=int,
+                        default='cifar',
+                        choices=hparams.HPARAM_CANDIDATES.keys(),
+                        help="The hyperparameter candidates (str) for next time period")  
+argparser.add_argument('--seed', default=None, type=int, choices=SEED_CANDIDATES,
                        help='seed for initializing training. ')
-
-def get_exp_str_from_train_mode(train_mode: configs.TrainMode, tp_idx: int):
-    if tp_idx == -1:
-        if train_mode.pretrained_mode == None:
-            return "none"
-        else:
-            return train_mode.pretrained_mode
-    elif tp_idx >= 0:
-        curr_config = train_mode.tp_configs[tp_idx]
-        curr_str = "_".join([curr_config.extractor_mode, curr_config.classifier_mode])
-        return f"_{tp_idx}_".join([get_exp_str_from_train_mode(train_mode, tp_idx-1), curr_str])
-
-def get_exp_str_from_hparam_strs(hparam_strs, tp_idx: int):
-    hparam_strs = hparam_strs[:tp_idx+1]
-    return str(os.path.sep).join(hparam_strs)
-
-def get_exp_str_from_partial_feedback(partial_feedback_mode : str, tp_idx : int):
-    if tp_idx == 0 or partial_feedback_mode == None:
-        return ""
-    else:
-        return partial_feedback_mode
 
 def is_better(select_criterion, curr_value, best_value):
     # Return True if curr_value is better than best_value
@@ -98,8 +75,7 @@ def train(loaders,
           tp_idx,
           loss_func, # loss_func takes model's output, time index, label as input, and return loss value
           hot_vector_func, # make a hot vector
-          select_criterion='acc_per_epoch'
-          ):
+          select_criterion='acc_per_epoch'):
     model = model.to(device)
 
     avg_results = {'train': {'history_loss_per_epoch': [], 'history_acc_per_epoch': [],
@@ -272,7 +248,7 @@ class TimestampDataset(torch.utils.data.Dataset):
         self.idx_to_dataset_idx = [] # map idx to item index in specific dataset
         self.idx_to_time = [] # map idx to the dataset index it belongs to
         for time_idx, dataset_length in enumerate(self.dataset_lengths):
-            self.idx_to_dataset_idx += [i for i in range(dataset_length)]
+            self.idx_to_dataset_idx += list(range(dataset_length))
             self.idx_to_time += [self.dataset_times[time_idx] for _ in range(dataset_length)]
         
     def __len__(self):
@@ -304,17 +280,20 @@ def get_train_set(partial_feedback_mode,
         val_datasets = {tp_idx : train_val_subsets[tp_idx][1]}  # Only the current val set is used
     return TimestampDataset(train_datasets), TimestampDataset(val_datasets)
 
-def get_make_hot_vector_func(superclass_to_subclass_idx,
+def get_make_hot_vector_func(superclass_to_subclass,
                              num_of_classes,
                              tp_idx):
+    # superclass_to_subclass[tp_idx][super_class_time][super_class_idx] is the set
+    # of indices (in current_time:tp_idx) included in the superclass
+
     # Return a function that makes a one hot vector from timestamp and labels
     num_of_leaf_classes = num_of_classes[tp_idx]
     def make_hot_vector(time_indices, labels, device='cuda'):
         hot_vector = torch.zeros((time_indices.shape[0], num_of_leaf_classes)).to(device)
-        for idx, time_idx in enumerate(time_indices):
-            label_idx = int(labels[int(time_idx)][idx])
-            if time_idx < tp_idx:
-                label_indices = superclass_to_subclass_idx[label_idx]
+        for idx, super_class_time in enumerate(time_indices):
+            super_class_idx = int(labels[int(super_class_time)][idx])
+            if super_class_time < tp_idx:
+                label_indices = superclass_to_subclass[tp_idx][super_class_time][super_class_idx]
                 hot_vector[idx, label_indices] = 1
             elif time_idx == tp_idx:
                 hot_vector[idx, label_idx] = 1
@@ -387,7 +366,7 @@ def start_training_partial_feedback(model,
                                     num_of_classes,
                                     testset,
                                     partial_feedback_mode,
-                                    superclass_to_subclass_idx):
+                                    superclass_to_subclass):
     if tp_idx == 0:
         assert model == None
     else:
@@ -410,7 +389,7 @@ def start_training_partial_feedback(model,
                                step_size=hparam_mode['decay_epochs'],
                                gamma=hparam_mode['decay_by'])
 
-    hot_vector_func = get_make_hot_vector_func(superclass_to_subclass_idx,
+    hot_vector_func = get_make_hot_vector_func(superclass_to_subclass,
                                                num_of_classes,
                                                tp_idx)
     loss_func = get_loss_func(partial_feedback_mode)
@@ -447,19 +426,12 @@ def start_training_partial_feedback(model,
     )
     return model, acc_result, best_result, avg_results
 
-def get_superclass_to_subclass_idx(idx_to_superclass_idx,
-                                   num_of_superclasses):
-    superclass_to_subclass_idx = {super_idx : [sub_idx 
-                                               for sub_idx in idx_to_superclass_idx.keys()
-                                               if idx_to_superclass_idx[sub_idx] == super_idx]
-                                  for super_idx in range(num_of_superclasses)}
-    return superclass_to_subclass_idx
-
 def start_experiment(data_dir: str, # where the data are saved, and datasets + model + final accuracy results will be saved
                      model_save_dir: str, # where the self-supervised pretrained models are saved
                      setup_mode_str: str, 
                      train_mode_str: str,
-                     hparam_strs, # List of strs
+                     hparam_strs, # A list of hparam str to load
+                     hparam_candidate : str, # The list of hparam to try for next time period (tp_idx = len(hparam_strs))
                      partial_feedback_mode : str, # str
                      seed=None):
     seed_str = f"seed_{seed}"
@@ -482,57 +454,65 @@ def start_experiment(data_dir: str, # where the data are saved, and datasets + m
         save_obj_as_pickle(dataset_path, dataset)
         print(f"Dataset saved at {dataset_path}")
 
-    train_val_subsets, testset, num_of_classes = dataset
+    train_val_subsets, testset, all_tp_info, leaf_idx_to_all_class_idx = dataset
 
-    superclass_to_subclass_idx = get_superclass_to_subclass_idx(testset.idx_to_superclass_idx,
-                                                                num_of_classes[0])
-    
     train_mode = configs.TRAIN_MODES[train_mode_str]
 
-    train_mode_str_check = get_exp_str_from_train_mode(train_mode, tp_idx=1)
-    assert train_mode_str_check == train_mode_str
+    # train_mode_str_check = print_utils.get_exp_str_from_train_mode(train_mode, tp_idx=1)
+    # assert train_mode_str_check == train_mode_str
     
     model = None
-    assert len(hparam_strs) == len(train_mode.tp_configs)
-    for tp_idx in range(len(train_mode.tp_configs)):
-        interim_exp_dir_tp_idx = os.path.join(setup_dir,
-                                              get_exp_str_from_train_mode(train_mode, tp_idx=tp_idx),
-                                              get_exp_str_from_partial_feedback(partial_feedback_mode, tp_idx=tp_idx),
-                                              get_exp_str_from_hparam_strs(hparam_strs, tp_idx=tp_idx))
-        makedirs(interim_exp_dir_tp_idx)
-        
-        hparams_mode = hparams.HPARAMS[hparam_strs[tp_idx]]
-        exp_result_path = os.path.join(interim_exp_dir_tp_idx, "result.ckpt")
+    for tp_idx in range(len(train_val_subsets)):
+        if tp_idx >= len(hparam_strs):
+            for hparams_str in hparams.HPARAM_CANDIDATES[hparam_candidate]:
+                hparams_mode = hparams.HPARAMS[hparams_str]
+                interim_exp_dir_tp_idx = os.path.join(setup_dir,
+                                                      print_utils.get_exp_str_from_train_mode(train_mode, tp_idx=tp_idx),
+                                                      print_utils.get_exp_str_from_partial_feedback(partial_feedback_mode, tp_idx=tp_idx),
+                                                      print_utils.get_exp_str_from_hparam_strs(hparam_strs+[hparams_str], tp_idx=tp_idx))
+                makedirs(interim_exp_dir_tp_idx)
+                exp_result_path = os.path.join(interim_exp_dir_tp_idx, "result.ckpt")
 
-        if os.path.exists(exp_result_path):
-            print(f"{tp_idx} time period already finished. Load from {exp_result_path}")
-            exp_result = load_pickle(exp_result_path)
-            model = exp_result['model']
-            acc_result = exp_result['acc_result']
-            best_result = exp_result['best_result']
-            avg_results = exp_result['avg_results']
+                if os.path.exists(exp_result_path):
+                    print(f"{tp_idx} time period already finished for {hparams_str}")
+                else:
+                    # exp_result do not exist, therefore start training
+                    new_model, acc_result, best_result, avg_results = start_training_partial_feedback(
+                        copy.deepcopy(model),
+                        model_save_dir,
+                        tp_idx,
+                        train_mode,
+                        hparams_mode,
+                        train_val_subsets,
+                        [info['num_of_classes'] for info in all_tp_info],
+                        testset,
+                        partial_feedback_mode,
+                        setups.get_superclass_to_subclass(leaf_idx_to_all_class_idx)
+                    )
+
+                    save_obj_as_pickle(exp_result_path, {
+                        'model' : new_model,
+                        'acc_result' : acc_result,
+                        'best_result' : best_result,
+                        'avg_results' : avg_results
+                    })
+            print(f"Finished for {tp_idx} time period.")
+            break
         else:
-            # both prev_result and exp_result do not exist, therefore start training
-            model, acc_result, best_result, avg_results = start_training_partial_feedback(
-                model,
-                model_save_dir,
-                tp_idx,
-                train_mode,
-                hparams_mode,
-                train_val_subsets,
-                num_of_classes,
-                testset,
-                partial_feedback_mode,
-                superclass_to_subclass_idx
-            )
-
-            save_obj_as_pickle(exp_result_path, {
-                'model' : model,
-                'acc_result' : acc_result,
-                'best_result' : best_result,
-                'avg_results' : avg_results
-            })
-
+            interim_exp_dir_tp_idx = os.path.join(setup_dir,
+                                                  print_utils.get_exp_str_from_train_mode(train_mode, tp_idx=tp_idx),
+                                                  print_utils.get_exp_str_from_partial_feedback(partial_feedback_mode, tp_idx=tp_idx),
+                                                  print_utils.get_exp_str_from_hparam_strs(hparam_strs, tp_idx=tp_idx))
+            exp_result_path = os.path.join(interim_exp_dir_tp_idx, "result.ckpt")
+            # Load the model
+            if not os.path.exists(exp_result_path):
+                print("Please specify the hparam for an experiment that is finished.")
+                import pdb; pdb.set_trace()
+                kill(0)
+            else:
+                print(f"{tp_idx} time period already finished. Load from {exp_result_path}")
+                exp_result = load_pickle(exp_result_path)
+                model = exp_result['model']
 
 if __name__ == '__main__':
     args = argparser.parse_args()
@@ -540,6 +520,7 @@ if __name__ == '__main__':
                      args.model_save_dir,
                      args.setup_mode,
                      args.train_mode,
-                     [args.hparam_0_str, args.hparam_1_str],
+                     args.hparam_strs,
+                     args.hparam_candidate,
                      args.partial_feedback_mode,
                      seed=args.seed)

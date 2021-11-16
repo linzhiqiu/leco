@@ -1,62 +1,137 @@
-CIFAR10_HPARAMS_0001 = {
-    'batch' : 128,
-    'workers' : 4,
-    'hparams' : {
-        'optim' : 'sgd',
-        'weight_decay' : 5e-4,
-        'momentum' : 0.9,
-        'lr' : 0.001,
-        'epochs' : 200,
-        'decay_epochs': 60,
-        'decay_by' : 0.1,
-    },
-}
-
-CIFAR10_HPARAMS_001 = {
-    'batch' : 128,
-    'workers' : 4,
-    'hparams' : {
-        'optim' : 'sgd',
-        'weight_decay' : 5e-4,
-        'momentum' : 0.9,
-        'lr' : 0.01,
-        'epochs' : 200,
-        'decay_epochs': 60,
-        'decay_by' : 0.1,
-    },
-}
-
-CIFAR10_HPARAMS_01 = {
-    'batch' : 128,
-    'workers' : 4,
-    'hparams' : {
-        'optim' : 'sgd',
-        'weight_decay' : 5e-4,
-        'momentum' : 0.9,
-        'lr' : 0.1,
-        'epochs' : 200,
-        'decay_epochs': 60,
-        'decay_by' : 0.1,
-    },
-}
-
-CIFAR10_HPARAMS_02 = {
-    'batch' : 128,
-    'workers' : 4,
-    'hparams' : {
-        'optim' : 'sgd',
-        'weight_decay' : 5e-4,
-        'momentum' : 0.9,
-        'lr' : 0.2,
-        'epochs' : 200,
-        'decay_epochs': 60,
-        'decay_by' : 0.1,
-    },
-}
-
 HPARAMS = {
-    'cifar10_01' : CIFAR10_HPARAMS_01,
-    'cifar10_02' : CIFAR10_HPARAMS_02,
-    'cifar10_001' : CIFAR10_HPARAMS_001,
-    'cifar10_0001' : CIFAR10_HPARAMS_0001,
+    'cifar_00001_batch_128' : {
+        'batch' : 128,
+        'workers' : 4,
+        'hparams' : {
+            'optim' : 'sgd',
+            'weight_decay' : 5e-4,
+            'momentum' : 0.9,
+            'lr' : 0.0001,
+            'epochs' : 200,
+            'decay_epochs': 60,
+            'decay_by' : 0.1,
+        },
+    },
+    'cifar_0001_batch_128' : {
+        'batch' : 128,
+        'workers' : 4,
+        'hparams' : {
+            'optim' : 'sgd',
+            'weight_decay' : 5e-4,
+            'momentum' : 0.9,
+            'lr' : 0.001,
+            'epochs' : 200,
+            'decay_epochs': 60,
+            'decay_by' : 0.1,
+        },
+    },
+    'cifar_001_batch_128' : {
+        'batch' : 128,
+        'workers' : 4,
+        'hparams' : {
+            'optim' : 'sgd',
+            'weight_decay' : 5e-4,
+            'momentum' : 0.9,
+            'lr' : 0.01,
+            'epochs' : 200,
+            'decay_epochs': 60,
+            'decay_by' : 0.1,
+        },
+    },
+    'cifar_01_batch_128' : {
+        'batch' : 128,
+        'workers' : 4,
+        'hparams' : {
+            'optim' : 'sgd',
+            'weight_decay' : 5e-4,
+            'momentum' : 0.9,
+            'lr' : 0.1,
+            'epochs' : 200,
+            'decay_epochs': 60,
+            'decay_by' : 0.1,
+        },
+    },
+    'cifar_1_batch_128' : {
+        'batch' : 128,
+        'workers' : 4,
+        'hparams' : {
+            'optim' : 'sgd',
+            'weight_decay' : 5e-4,
+            'momentum' : 0.9,
+            'lr' : 1.,
+            'epochs' : 200,
+            'decay_epochs': 60,
+            'decay_by' : 0.1,
+        },
+    },
+    'cifar_00001_batch_64' : {
+        'batch' : 64,
+        'workers' : 4,
+        'hparams' : {
+            'optim' : 'sgd',
+            'weight_decay' : 5e-4,
+            'momentum' : 0.9,
+            'lr' : 0.0001,
+            'epochs' : 200,
+            'decay_epochs': 60,
+            'decay_by' : 0.1,
+        },
+    },
+    'cifar_0001_batch_64' : {
+        'batch' : 64,
+        'workers' : 4,
+        'hparams' : {
+            'optim' : 'sgd',
+            'weight_decay' : 5e-4,
+            'momentum' : 0.9,
+            'lr' : 0.001,
+            'epochs' : 200,
+            'decay_epochs': 60,
+            'decay_by' : 0.1,
+        },
+    },
+    'cifar_001_batch_64' : {
+        'batch' : 64,
+        'workers' : 4,
+        'hparams' : {
+            'optim' : 'sgd',
+            'weight_decay' : 5e-4,
+            'momentum' : 0.9,
+            'lr' : 0.01,
+            'epochs' : 200,
+            'decay_epochs': 60,
+            'decay_by' : 0.1,
+        },
+    },
+    'cifar_01_batch_64' : {
+        'batch' : 64,
+        'workers' : 4,
+        'hparams' : {
+            'optim' : 'sgd',
+            'weight_decay' : 5e-4,
+            'momentum' : 0.9,
+            'lr' : 0.1,
+            'epochs' : 200,
+            'decay_epochs': 60,
+            'decay_by' : 0.1,
+        },
+    },
+    'cifar_1_batch_64' : {
+        'batch' : 64,
+        'workers' : 4,
+        'hparams' : {
+            'optim' : 'sgd',
+            'weight_decay' : 5e-4,
+            'momentum' : 0.9,
+            'lr' : 1.,
+            'epochs' : 200,
+            'decay_epochs': 60,
+            'decay_by' : 0.1,
+        },
+    },
+}
+
+HPARAM_CANDIDATES = {
+    'cifar' : ['cifar_1_batch_128', 'cifar_01_batch_128', 'cifar_001_batch_128', 'cifar_0001_batch_128', 'cifar_00001_batch_128',
+               'cifar_1_batch_64', 'cifar_01_batch_64', 'cifar_001_batch_64', 'cifar_0001_batch_64', 'cifar_00001_batch_64']
 }
