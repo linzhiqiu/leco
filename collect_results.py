@@ -1,3 +1,17 @@
+# 0-17: python collect_results.py --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
+
+# 0-17: python collect_results.py --partial_feedback_mode partial_feedback --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
+# 0-17: python collect_results.py --partial_feedback_mode partial_feedback_weight_history_0 --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
+# 0-17: python collect_results.py --partial_feedback_mode partial_feedback_weight_history_2 --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
+# 0-17: python collect_results.py --partial_feedback_mode partial_feedback_weight_history_0.5 --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
+# 0-17: python collect_results.py --partial_feedback_mode log_in_partial_feedback --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
+# 0-17: python collect_results.py --partial_feedback_mode log_in_partial_feedback_weight_history_0 --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
+# 0-17: python collect_results.py --partial_feedback_mode log_in_partial_feedback_weight_history_2 --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
+# 0-17: python collect_results.py --partial_feedback_mode log_in_partial_feedback_weight_history_0.5 --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
+
+
+
+# 0-15: python collect_results.py --hparam_candidate inat --train_mode_candidate inat --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/inat2021_resnet50/
 import os
 import argparse
 import random
@@ -9,11 +23,15 @@ import setups
 from tabulate import tabulate
 from print_utils import get_exp_str_from_train_mode, get_exp_str_from_hparam_strs, get_exp_str_from_partial_feedback
 import configs
+import copy
 
 argparser = argparse.ArgumentParser()
 argparser.add_argument("--data_dir", 
-                        default='/scratch/leco/',
+                        default='/ssd1/leco/',
                         help="Where the dataset are saved.")
+argparser.add_argument("--model_save_dir", 
+                        default='/data3/zhiqiul/self_supervised_models/resnet18/',
+                        help="Where the self-supervised pre-trained models will be saved.")
 argparser.add_argument("--partial_feedback_mode", 
                         default=None, type=str,
                         help="If used partial feedback, input the mode")
@@ -22,6 +40,11 @@ argparser.add_argument("--hparam_candidate",
                         default='cifar',
                         choices=hparams.HPARAM_CANDIDATES.keys(),
                         help="The hyperparameter candidates (str) for next time period")
+argparser.add_argument("--train_mode_candidate",
+                        type=str,
+                        default='cifar',
+                        choices=configs.ALL_TRAIN_MODES.keys(),
+                        help="The train mode candidates for this setup")
 SEED_LIST = [None, 1, 10, 100, 1000]
 
 def mean_std_from_dict(lst_of_dict, key):
@@ -74,6 +97,9 @@ def save_all_results(result_dir, result_dict, setup_mode, all_tp_info):
                 tp_results = all_results[hparam_str]['tp_results']
                 for seed_idx, tp_result in enumerate(tp_results):
                     row = [train_mode_str, str(seed_idx)]
+                    epoch, train_acc, test_acc = get_result(tp_result)
+                    row += [hparam_str, epoch, train_acc, test_acc]
+
                     for prev_i in range(tp_idx-1, -1, -1):
                         prev_result = prev_results[prev_i]
                         prev_result_i = prev_result[seed_idx]
@@ -81,8 +107,6 @@ def save_all_results(result_dir, result_dict, setup_mode, all_tp_info):
                         epoch, train_acc, test_acc = get_result(prev_result_i)
                         row += [prev_hparam, epoch, train_acc, test_acc]
                     
-                    epoch, train_acc, test_acc = get_result(tp_result)
-                    row += [hparam_str, epoch, train_acc, test_acc]
                     all_rows.append(row)
         
         with open(tp_file, "w+") as file:
@@ -114,15 +138,16 @@ def save_avg_results(result_dir, result_dict, setup_mode, all_tp_info):
             for hparam_str in all_results:
                 row = [train_mode_str]
                 
+                epoch, train_acc, test_acc = get_mean_std_result(all_results[hparam_str])
+                row += [hparam_str, epoch, train_acc, test_acc]
+                all_rows.append(row)
+
                 for prev_i in range(tp_idx-1, -1, -1):
                     prev_result = prev_results[prev_i]
                     prev_hparam = hparam_strs[prev_i]
                     epoch, train_acc, test_acc = get_mean_std_result(prev_result)
                     row += [prev_hparam, epoch, train_acc, test_acc]
                     
-                epoch, train_acc, test_acc = get_mean_std_result(all_results[hparam_str])
-                row += [hparam_str, epoch, train_acc, test_acc]
-                all_rows.append(row)
         
         with open(tp_file, "w+") as file:
             file.write(tabulate(all_rows, headers=all_headers, tablefmt='orgtbl'))
@@ -148,7 +173,8 @@ def save_best_results(result_dir, result_dict, setup_mode, all_tp_info):
             else:
                 assert result_dict[setup_mode][train_mode_str][tp_idx]['tp_idx'] == tp_idx
             hparam_strs = result_dict[setup_mode][train_mode_str][tp_idx]['hparam_strs']
-            assert len(hparam_strs) == tp_idx + 1
+            if not len(hparam_strs) - 1 >= tp_idx:
+                import pdb; pdb.set_trace()
             row = [train_mode_str]
             best_results = [result_dict[setup_mode][train_mode_str][i]['all_results'][hparam_strs[i]] for i in range(tp_idx+1)]
             for idx in range(tp_idx, -1, -1):
@@ -162,13 +188,13 @@ def save_best_results(result_dir, result_dict, setup_mode, all_tp_info):
             file.write(tabulate(all_rows, headers=all_headers, tablefmt='orgtbl'))
             print(f"Save at {tp_file}")
 
-def prepare_scripts(data_dir, setup_mode, train_mode_str, hparam_strs, hparam_candidate, seed_list, partial_feedback_mode):
+def prepare_scripts(data_dir, model_save_dir, setup_mode, train_mode_str, hparam_strs, hparam_candidate, seed_list, partial_feedback_mode):
     scripts = []
-    script_file = "train.py" if not partial_feedback_mode else "train_partial_feedback.py --partial_feedback_mode {partial_feedback_mode}"
+    script_file = "train.py" if not partial_feedback_mode else f"train_partial_feedback.py --partial_feedback_mode {partial_feedback_mode}"
     for seed in seed_list:
         seed_str = f"--seed {seed}" if seed else ""
         hparam_list_str = "--hparam_strs " + " ".join(hparam_strs) if len(hparam_strs) > 0 else ""
-        script = f"python {script_file} --setup_mode {setup_mode} --train_mode {train_mode_str} {seed_str} {hparam_list_str} --hparam_candidate {hparam_candidate}"
+        script = f"python {script_file} --setup_mode {setup_mode} --train_mode {train_mode_str} {seed_str} {hparam_list_str} --hparam_candidate {hparam_candidate} --data_dir {data_dir} --model_save_dir {model_save_dir}"
         scripts.append(script)
     return scripts  
 
@@ -182,8 +208,10 @@ def write_scripts_to_file(scripts_to_run, result_dir, setup_mode):
     print(f"Saved {len(scripts_to_run)} scripts (to run) in {script_file}")
 
 def gather_exp(data_dir: str,
+               model_save_dir : str,
                partial_feedback_mode=None,
                hparam_candidate='cifar',
+               train_mode_candidate='cifar',
                seed_list=SEED_LIST):
 
     result_dir = os.path.join(data_dir, 'results')
@@ -191,7 +219,7 @@ def gather_exp(data_dir: str,
         result_dir = os.path.join(result_dir, partial_feedback_mode)
     makedirs(result_dir)
     setup_list = list(setups.SETUPS.keys())
-    train_mode_list = list(configs.TRAIN_MODES.keys())
+    train_mode_list = configs.ALL_TRAIN_MODES[train_mode_candidate]
     hparam_str_list = list(hparams.HPARAMS.keys())
 
     result_dict = {}
@@ -205,7 +233,7 @@ def gather_exp(data_dir: str,
                 is_ready = False
         if not is_ready:
             print(f"{setup_mode} setup has not finished.")
-            break
+            continue
         
         dataset = load_pickle(dataset_path)
         _, _, all_tp_info, leaf_idx_to_all_class_idx = dataset
@@ -214,8 +242,8 @@ def gather_exp(data_dir: str,
         for train_mode_str in train_mode_list:
             train_mode = configs.TRAIN_MODES[train_mode_str]
             hparam_strs = [] # Best hparam per time period
-            all_results = {}
             for tp_idx in range(len(all_tp_info)):
+                all_results = {}
                 all_candidates = hparams.HPARAM_CANDIDATES[hparam_candidate]
                 best_hparam_str = None
                 best_test_acc_mean = None
@@ -229,7 +257,13 @@ def gather_exp(data_dir: str,
                                                        get_exp_str_from_hparam_strs(hparam_strs+[hparam_str], tp_idx=tp_idx),
                                                        'result.ckpt')
                         if os.path.exists(exp_result_path):
-                            exp_result = load_pickle(exp_result_path)
+                            try:
+                                exp_result = load_pickle(exp_result_path)
+                            except:
+                                print(exp_result_path + " truncated?")
+                                import pdb; pdb.set_trace()
+                                all_candidates_are_ready = False
+                                break
                             best_epoch = exp_result['best_result']['best_epoch']
                             train_acc = exp_result['acc_result']['train']
                             test_acc = exp_result['acc_result']['test']
@@ -270,14 +304,14 @@ def gather_exp(data_dir: str,
                     result_dict[setup_mode][train_mode_str].append({
                         'tp_idx' : tp_idx,
                         'best_hparam_str' : best_hparam_str,
-                        'hparam_strs' : hparam_strs, # up to this tp_idx
-                        'all_results' : all_results,
+                        'hparam_strs' : copy.deepcopy(hparam_strs), # up to this tp_idx
+                        'all_results' : copy.deepcopy(all_results),
                     })
                         
                     
                 else:
                     # prepare scripts for this tp_idx
-                    current_scripts = prepare_scripts(data_dir, setup_mode, train_mode_str, hparam_strs, hparam_candidate, seed_list, partial_feedback_mode)
+                    current_scripts = prepare_scripts(data_dir, model_save_dir, setup_mode, train_mode_str, hparam_strs, hparam_candidate, seed_list, partial_feedback_mode)
                     scripts_to_run += current_scripts
                     print(f"Setup {setup_mode}: {len(current_scripts)} scripts for train mode {train_mode_str}.")
                     break
@@ -294,5 +328,7 @@ def gather_exp(data_dir: str,
 if __name__ == '__main__':
     args = argparser.parse_args()
     gather_exp(args.data_dir,
-               args.partial_feedback_mode,
-               args.hparam_candidate)
+               args.model_save_dir,
+               partial_feedback_mode=args.partial_feedback_mode,
+               hparam_candidate=args.hparam_candidate,
+               train_mode_candidate=args.train_mode_candidate)

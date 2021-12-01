@@ -98,12 +98,38 @@ class CIFAR10(LecoDataset):
             assert tp_info['tp_idx'] == i
         return all_tp_info, leaf_idx_to_all_class_idx
 
+class IndexFolder(torchvision.datasets.ImageFolder):
+    def find_classes(self, directory):
+        classes = sorted(int(entry.name) for entry in os.scandir(directory) if entry.is_dir())
+        if not classes:
+            raise FileNotFoundError(f"Couldn't find any class folder with integer class name in {directory}.")
+
+        class_to_idx = {str(cls_name): i for i, cls_name in enumerate(classes)}
+        classes = [str(name) for name in classes]
+        return classes, class_to_idx
+
 class SemiInat2021(LecoDataset):
     def __init__(self, data_dir):
         super().__init__(data_dir)
     
     def get_dataset(self):
-        raise NotImplementedError()
+        normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        transform_train = transforms.Compose(
+            [transforms.RandomResizedCrop(224), transforms.RandomHorizontalFlip(), transforms.ToTensor(), normalize]
+        )
+        transform_test = transforms.Compose(
+            [transforms.Resize(224), transforms.CenterCrop(224), transforms.ToTensor(), normalize]
+        )
+
+        trainset = IndexFolder(
+            os.path.join(self.data_dir, 'semi_inat', 'l_train'),
+            transform=transform_train
+        )
+        testset = IndexFolder(
+            os.path.join(self.data_dir, 'semi_inat', 'val'),
+            transform=transform_test
+        )
+        return trainset, testset
     
     def get_class_hierarchy(self):
         # An example of taxa
@@ -196,6 +222,7 @@ class SemiInat2021(LecoDataset):
                 'leaf_name_to_idx' : {},
             }
             if tp_idx == len(tp_names)-1:
+                tp_name = tp_names[tp_idx]
                 assert tp_name == 'species'
                 for taxa in all_taxa['species']:
                     class_id = taxa['class_id']
@@ -209,14 +236,14 @@ class SemiInat2021(LecoDataset):
                     # phylum = taxa['phylum']
                     # kingdom = taxa['kingdom']
                     leaf_idx_to_all_class_idx[class_id] = [
-                        all_classes[tp_name].index(taxa[tp_name])
-                        for tp_name in tp_names
-                    ]
+                        all_taxa[level].index(taxa[level])
+                        for level in tp_names[:-1]
+                    ] + [class_id]
                 
                 for class_id in sorted(list(leaf_idx_to_all_class_idx.keys())):
                     tp_info['all_classes'].append(tp_info['idx_to_leaf_name'][class_id])
             else:
-                tp_info['all_classes'].append(all_taxa[tp_name])
+                tp_info['all_classes'] = all_taxa[tp_names[tp_idx]]
                 for class_id, leaf_name in enumerate(tp_info['all_classes']):
                     tp_info['idx_to_leaf_name'][class_id] = leaf_name
                     tp_info['leaf_name_to_idx'][leaf_name] = class_id

@@ -65,9 +65,9 @@ def get_superclass_to_subclass(leaf_idx_to_all_class_idx):
     # is the set of indices in sub_class_time that correspond to the superclass
     num_of_levels = len(leaf_idx_to_all_class_idx[list(leaf_idx_to_all_class_idx.keys())[0]])
     superclass_to_subclass = {}
-    for tp_idx in range(len(num_of_levels)-1, -1, -1):
+    for tp_idx in range(num_of_levels-1, -1, -1):
         superclass_to_subclass[tp_idx] = {}
-        for super_class_time in range(tp_idx):
+        for super_class_time in range(tp_idx+1):
             superclass_to_subclass[tp_idx][super_class_time] = {}
             for leaf_idx in leaf_idx_to_all_class_idx:
                 sub_class_idx = leaf_idx_to_all_class_idx[leaf_idx][tp_idx]
@@ -87,21 +87,28 @@ def generate_dataset(data_dir, setup : Setup, annotation_file=''):
     all_tp_info, leaf_idx_to_all_class_idx = dataset.get_class_hierarchy()
     trainset = HierarchyDataset(trainset, leaf_idx_to_all_class_idx)
     testset = HierarchyDataset(testset, leaf_idx_to_all_class_idx)
+    print(f"Length of trainset is {len(trainset)}")
     
+    train_val_subsets = []
     if setup.replace:
         print('Sample with replacement!')
-        raise NotImplementedError()
+        len_of_trainset = len(trainset)
+        
+        for _, (tp_buffer_train, tp_buffer_val) in enumerate(setup.tp_buffers):
+            indices_trainset = list(range(len_of_trainset))
+            random.shuffle(indices_trainset)
+            indices_tp_train, indices_tp_val = indices_trainset[:tp_buffer_train], indices_trainset[tp_buffer_train:tp_buffer_train+tp_buffer_val]
+            train_val_subsets.append((torch.utils.data.Subset(trainset, indices_tp_train), torch.utils.data.Subset(trainset, indices_tp_val)) )
     else:
         len_of_trainset = len(trainset)
         indices_trainset = list(range(len_of_trainset))
         random.shuffle(indices_trainset)
         
-        train_val_subsets = []
         for _, (tp_buffer_train, tp_buffer_val) in enumerate(setup.tp_buffers):
             indices_tp_train, indices_tp_val = indices_trainset[:tp_buffer_train], indices_trainset[tp_buffer_train:tp_buffer_train+tp_buffer_val]
             indices_trainset = indices_trainset[tp_buffer_train+tp_buffer_val:]
             train_val_subsets.append((torch.utils.data.Subset(trainset, indices_tp_train), torch.utils.data.Subset(trainset, indices_tp_val)) )
-        return train_val_subsets, testset, all_tp_info, leaf_idx_to_all_class_idx
+    return train_val_subsets, testset, all_tp_info, leaf_idx_to_all_class_idx
 
 
 if __name__ == "__main__":

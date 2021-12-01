@@ -66,6 +66,7 @@ def train(loaders,
 
     for epoch in range(0, epochs):
         print(f"Epoch {epoch}")
+        # import pdb; pdb.set_trace()
         for phase in phases:
             if phase == 'train':
                 model.train()
@@ -169,7 +170,6 @@ def start_training(model,
         assert model == None
     else:
         assert model != None
-    
     model = update_model(model, model_save_dir, tp_idx, train_mode, num_of_classes)
     
     batch_size = hparams_mode['batch']

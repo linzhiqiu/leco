@@ -129,9 +129,101 @@ HPARAMS = {
             'decay_by' : 0.1,
         },
     },
+    'inat_03_batch_64' : {
+        'batch' : 64,
+        'workers' : 4,
+        'hparams' : {
+            'optim' : 'sgd',
+            'weight_decay' : 5e-4,
+            'momentum' : 0.9,
+            'lr' : 0.3,
+            'epochs' : 300,
+            'decay_epochs': 120,
+            'decay_by' : 0.1,
+        },
+    },
+    'inat_003_batch_64' : {
+        'batch' : 64,
+        'workers' : 4,
+        'hparams' : {
+            'optim' : 'sgd',
+            'weight_decay' : 5e-4,
+            'momentum' : 0.9,
+            'lr' : 0.03,
+            'epochs' : 300,
+            'decay_epochs': 120,
+            'decay_by' : 0.1,
+        },
+    },
+    'inat_003_batch_64_wd_5e_3' : {
+        'batch' : 64,
+        'workers' : 4,
+        'hparams' : {
+            'optim' : 'sgd',
+            'weight_decay' : 5e-3,
+            'momentum' : 0.9,
+            'lr' : 0.03,
+            'epochs' : 300,
+            'decay_epochs': 120,
+            'decay_by' : 0.1,
+        },
+    },
+    'inat_003_batch_64_wd_5e_5' : {
+        'batch' : 64,
+        'workers' : 4,
+        'hparams' : {
+            'optim' : 'sgd',
+            'weight_decay' : 5e-5,
+            'momentum' : 0.9,
+            'lr' : 0.03,
+            'epochs' : 300,
+            'decay_epochs': 120,
+            'decay_by' : 0.1,
+        },
+    },
+    'inat_003_batch_64_wd_5e_6' : {
+        'batch' : 64,
+        'workers' : 4,
+        'hparams' : {
+            'optim' : 'sgd',
+            'weight_decay' : 5e-6,
+            'momentum' : 0.9,
+            'lr' : 0.03,
+            'epochs' : 300,
+            'decay_epochs': 120,
+            'decay_by' : 0.1,
+        },
+    },
+    'inat_0003_batch_64' : {
+        'batch' : 64,
+        'workers' : 4,
+        'hparams' : {
+            'optim' : 'sgd',
+            'weight_decay' : 5e-4,
+            'momentum' : 0.9,
+            'lr' : 0.003,
+            'epochs' : 300,
+            'decay_epochs': 120,
+            'decay_by' : 0.1,
+        },
+    },
+    'inat_00003_batch_64' : {
+        'batch' : 64,
+        'workers' : 4,
+        'hparams' : {
+            'optim' : 'sgd',
+            'weight_decay' : 5e-4,
+            'momentum' : 0.9,
+            'lr' : 0.0003,
+            'epochs' : 300,
+            'decay_epochs': 120,
+            'decay_by' : 0.1,
+        },
+    },
 }
 
 HPARAM_CANDIDATES = {
     'cifar' : ['cifar_1_batch_128', 'cifar_01_batch_128', 'cifar_001_batch_128', 'cifar_0001_batch_128', 'cifar_00001_batch_128',
-               'cifar_1_batch_64', 'cifar_01_batch_64', 'cifar_001_batch_64', 'cifar_0001_batch_64', 'cifar_00001_batch_64']
+               'cifar_1_batch_64', 'cifar_01_batch_64', 'cifar_001_batch_64', 'cifar_0001_batch_64', 'cifar_00001_batch_64'],
+    'inat' : ['inat_003_batch_64_wd_5e_6', 'inat_003_batch_64_wd_5e_5', 'inat_003_batch_64_wd_5e_3', 'inat_00003_batch_64', 'inat_0003_batch_64', 'inat_003_batch_64', 'inat_03_batch_64'],
 }

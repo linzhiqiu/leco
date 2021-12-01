@@ -56,7 +56,7 @@ argparser.add_argument("--hparam_candidate",
                         default='cifar',
                         choices=hparams.HPARAM_CANDIDATES.keys(),
                         help="The hyperparameter candidates (str) for next time period")  
-argparser.add_argument('--seed', default=None, type=int, choices=SEED_CANDIDATES,
+argparser.add_argument('--seed', default=None, type=int,
                        help='seed for initializing training. ')
 
 def is_better(select_criterion, curr_value, best_value):
@@ -290,15 +290,17 @@ def get_make_hot_vector_func(superclass_to_subclass,
     num_of_leaf_classes = num_of_classes[tp_idx]
     def make_hot_vector(time_indices, labels, device='cuda'):
         hot_vector = torch.zeros((time_indices.shape[0], num_of_leaf_classes)).to(device)
+        # import pdb; pdb.set_trace()
         for idx, super_class_time in enumerate(time_indices):
             super_class_idx = int(labels[int(super_class_time)][idx])
-            if super_class_time < tp_idx:
-                label_indices = superclass_to_subclass[tp_idx][super_class_time][super_class_idx]
-                hot_vector[idx, label_indices] = 1
-            elif time_idx == tp_idx:
-                hot_vector[idx, label_idx] = 1
-            else:
-                raise ValueError('Invalid time index')
+            # if super_class_time < tp_idx:
+            label_indices = superclass_to_subclass[tp_idx][int(super_class_time)][super_class_idx]
+            hot_vector[idx, label_indices] = 1
+            # import pdb; pdb.set_trace()
+            # elif super_class_time == tp_idx:
+            #     hot_vector[idx, label_idx] = 1
+            # else:
+            #     raise ValueError('Invalid time index')
         return hot_vector
     return make_hot_vector
 

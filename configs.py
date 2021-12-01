@@ -1,12 +1,17 @@
 from typing import List
 
 PRETRAINED_MODES = [
-    None,
+    None, # resnet18 from scratch
+    'resnet50_scratch', # resnet50 scratch
+    'resnet50_imgnet', # resnet50 imagenet pretrained
     'resnet18_simclr', # From (https://github.com/sthalles/SimCLR), download link is: https://drive.google.com/file/d/14_nH2FkyKbt61cieQDiSbBVNP8-gtwgF/view
     # Below are trained from github repo (with default parameters): https://github.com/untitled-ai/self_supervised
     'resnet18_simclr_pl',
     'resnet18_moco_v2_pl',
-    'resnet18_byol_pl'
+    'resnet18_byol_pl',
+    'resnet50_simclr_pl',
+    'resnet50_moco_v2_pl',
+    'resnet50_byol_pl'
 ]
 
 EXTRACTOR_MODES = [
@@ -37,7 +42,71 @@ class TrainMode():
         self.pretrained_mode = pretrained_mode
         self.tp_configs = tp_configs
 
-TRAIN_MODES = {
+
+INAT_MODES = {
+    "resnet50_scratch_all_retrain" : TrainMode(
+        'resnet50_scratch',
+        [Phase('scratch', 'linear'),
+         Phase('scratch', 'linear'),
+         Phase('scratch', 'linear'),
+         Phase('scratch', 'linear'),
+         Phase('scratch', 'linear'),
+         Phase('scratch', 'linear'),
+         Phase('scratch', 'linear')]
+    ),
+    "resnet50_imgnet_all_retrain" : TrainMode(
+        'resnet50_imgnet',
+        [Phase('finetune_pt', 'linear'),
+         Phase('finetune_pt', 'linear'),
+         Phase('finetune_pt', 'linear'),
+         Phase('finetune_pt', 'linear'),
+         Phase('finetune_pt', 'linear'),
+         Phase('finetune_pt', 'linear'),
+         Phase('finetune_pt', 'linear')]
+    ),
+    "resnet50_moco_v2_pl_all_retrain" : TrainMode(
+        'resnet50_moco_v2_pl',
+        [Phase('finetune_pt', 'linear'),
+         Phase('finetune_pt', 'linear'),
+         Phase('finetune_pt', 'linear'),
+         Phase('finetune_pt', 'linear'),
+         Phase('finetune_pt', 'linear'),
+         Phase('finetune_pt', 'linear'),
+         Phase('finetune_pt', 'linear')]
+    ),
+    "resnet50_scratch_all_finetune" : TrainMode(
+        'resnet50_scratch',
+        [Phase('scratch', 'linear'),
+         Phase('finetune_prev', 'linear'),
+         Phase('finetune_prev', 'linear'),
+         Phase('finetune_prev', 'linear'),
+         Phase('finetune_prev', 'linear'),
+         Phase('finetune_prev', 'linear'),
+         Phase('finetune_prev', 'linear')]
+    ),
+    "resnet50_imgnet_all_finetune" : TrainMode(
+        'resnet50_imgnet',
+        [Phase('finetune_pt', 'linear'),
+         Phase('finetune_prev', 'linear'),
+         Phase('finetune_prev', 'linear'),
+         Phase('finetune_prev', 'linear'),
+         Phase('finetune_prev', 'linear'),
+         Phase('finetune_prev', 'linear'),
+         Phase('finetune_prev', 'linear')]
+    ),
+    "resnet50_moco_v2_pl_all_finetune" : TrainMode(
+        'resnet50_moco_v2_pl',
+        [Phase('finetune_pt', 'linear'),
+         Phase('finetune_prev', 'linear'),
+         Phase('finetune_prev', 'linear'),
+         Phase('finetune_prev', 'linear'),
+         Phase('finetune_prev', 'linear'),
+         Phase('finetune_prev', 'linear'),
+         Phase('finetune_prev', 'linear')]
+    ),
+}
+
+CIFAR_MODES = {
     "none_0_scratch_linear_1_scratch_linear" : TrainMode(
         None,
         [Phase('scratch', 'linear'), Phase('scratch', 'linear'),]
@@ -203,4 +272,14 @@ TRAIN_MODES = {
         'resnet18_byol_pl',
         [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'mlp'),]
     ),
+}
+
+TRAIN_MODES = {
+    **CIFAR_MODES,
+    **INAT_MODES
+}
+
+ALL_TRAIN_MODES = {
+    'cifar' : CIFAR_MODES,
+    'inat' : INAT_MODES,
 }

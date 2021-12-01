@@ -55,6 +55,14 @@ def load_model(model_save_dir: str,
         model = torchvision.models.resnet18(pretrained=False, num_classes=100)
         model.fc = torch.nn.Identity()
         return model
+    elif pretrained_mode == 'resnet50_scratch':
+        model = torchvision.models.resnet50(pretrained=False, num_classes=100)
+        model.fc = torch.nn.Identity()
+        return model
+    elif pretrained_mode == 'resnet50_imgnet':
+        model = torchvision.models.resnet50(pretrained=True, num_classes=1000)
+        model.fc = torch.nn.Identity()
+        return model
     else:
         if pretrained_mode == 'resnet18_simclr':
             from models import ResNetSimCLR
@@ -68,6 +76,13 @@ def load_model(model_save_dir: str,
             model = model.__dict__['_modules']['model']
         return model
 
+def get_fc_size(pretrained_mode):
+    if pretrained_mode and 'resnet50' in pretrained_mode:
+        fc_size = 2048
+    else:
+        fc_size = 512
+    return fc_size
+
 def update_model(model, model_save_dir, tp_idx, train_mode, num_of_classes):
     extractor_mode = train_mode.tp_configs[tp_idx].extractor_mode
     classifier_mode = train_mode.tp_configs[tp_idx].classifier_mode
@@ -76,6 +91,7 @@ def update_model(model, model_save_dir, tp_idx, train_mode, num_of_classes):
     if tp_idx > 0 and classifier_mode == 'mlp_replace_last':
         prev_fc = copy.deepcopy(model.fc)
     
+    fc_size = get_fc_size(train_mode.pretrained_mode)
     if extractor_mode in ['scratch', 'finetune_pt', 'freeze_pt', 'freeze_random']:
         model = load_model(model_save_dir, train_mode.pretrained_mode)
     elif extractor_mode in ['finetune_prev', 'freeze_prev']:
@@ -83,9 +99,9 @@ def update_model(model, model_save_dir, tp_idx, train_mode, num_of_classes):
         assert model != None and tp_idx > 0
     
     if classifier_mode == 'linear':
-        model.fc = torch.nn.Linear(512, num_class)
+        model.fc = torch.nn.Linear(fc_size, num_class)
     elif classifier_mode == 'mlp':
-        model.fc = MLP(512, 1024, num_class)
+        model.fc = MLP(fc_size, 1024, num_class)
     elif classifier_mode == 'mlp_replace_last':
         prev_fc.fc2 = torch.nn.Linear(prev_fc.hidden_size, num_class)
         model.fc = prev_fc
