@@ -14,16 +14,20 @@ import copy
 import torch
 import torchvision
 device = "cuda" if torch.cuda.is_available() else "cpu"
-
+SAVE_BEST_MODEL = False
 PARTIAL_FEEDBACK_MODES = [
     'partial_feedback', # Naively mix all history and current samples, using modified (log out) peiyun's loss function
     'partial_feedback_weight_history_0', # Naively mix all history and current samples, using modified (log out) peiyun's loss function, but weight history sample with weight 0 (sanity check)
     'partial_feedback_weight_history_2', # Naively mix all history and current samples, using modified (log out) peiyun's loss function, but weight history sample with weight 2 and current sample with 0
     'partial_feedback_weight_history_0.5', # Naively mix all history and current samples, using modified (log out) peiyun's loss function, but weight history sample with weight 0.5 and current sample with 1.5
-    'log_in_partial_feedback', # Naively mix all history and current samples, using peiyun's loss function with the summation outside log func
-    'log_in_partial_feedback_weight_history_0', # Naively mix all history and current samples, using peiyun's loss function, but weight history sample with weight 0 (sanity check)
-    'log_in_partial_feedback_weight_history_2', # Naively mix all history and current samples, using peiyun's loss function, but weight history sample with weight 2 and current sample with 0
-    'log_in_partial_feedback_weight_history_0.5', # Naively mix all history and current samples, using peiyun's loss function, but weight history sample with weight 0.5 and current sample with 1.5
+    'peiyun_partial_feedback', # Naively mix all history and current samples, using peiyun's loss function with the summation outside log func
+    'peiyun_partial_feedback_weight_history_0', # Naively mix all history and current samples, using peiyun's loss function, but weight history sample with weight 0 (sanity check)
+    'peiyun_partial_feedback_weight_history_2', # Naively mix all history and current samples, using peiyun's loss function, but weight history sample with weight 2 and current sample with 0
+    'peiyun_partial_feedback_weight_history_0.5', # Naively mix all history and current samples, using peiyun's loss function, but weight history sample with weight 0.5 and current sample with 1.5
+    # 'log_in_partial_feedback', # Naively mix all history and current samples, using peiyun's loss function with the summation outside log func
+    # 'log_in_partial_feedback_weight_history_0', # Naively mix all history and current samples, using peiyun's loss function, but weight history sample with weight 0 (sanity check)
+    # 'log_in_partial_feedback_weight_history_2', # Naively mix all history and current samples, using peiyun's loss function, but weight history sample with weight 2 and current sample with 0
+    # 'log_in_partial_feedback_weight_history_0.5', # Naively mix all history and current samples, using peiyun's loss function, but weight history sample with weight 0.5 and current sample with 1.5
     'no_history', # For test purpose, no history samples, using softmax loss (our modified version)
 ]
 
@@ -119,6 +123,7 @@ def train(loaders,
             pbar = loaders[phase]
 
             for batch, data in enumerate(pbar):
+                # import pdb; pdb.set_trace()
                 if phase in ['train', 'val']:
                     inputs, time_indices, labels = data
                 else:
@@ -198,7 +203,8 @@ def train(loaders,
                     # best_result['best_current_acc'] = avg_acc_current
                     # best_result['best_current_loss'] = avg_loss_current
                     best_result['best_value'] = curr_value
-                    best_result['best_model'] = copy.deepcopy(model.state_dict())
+                    if SAVE_BEST_MODEL:
+                        best_result['best_model'] = copy.deepcopy(model.state_dict())
             print(
                 f"Epoch {epoch}: Average {phase} Loss {avg_loss:.4f}, Acc {avg_acc:.2%}; {phase_str}")
         print()
@@ -206,7 +212,8 @@ def train(loaders,
         f"Test Accuracy (for best val {select_criterion} model): {avg_results['test']['acc_per_epoch'][best_result['best_epoch']]:.2%}")
     print(
         f"Best Test Accuracy overall: {max(avg_results['test']['acc_per_epoch']):.2%}")
-    model.load_state_dict(best_result['best_model'])
+    if SAVE_BEST_MODEL:
+        model.load_state_dict(best_result['best_model'])
     test_acc = test(loaders['test'], model, tp_idx)
     print(f"Verify the best test accuracy for best val {select_criterion} is indeed {test_acc:.2%}")
     acc_result = {phase: avg_results[phase]['acc_per_epoch'][best_result['best_epoch']]
@@ -274,6 +281,10 @@ def get_train_set(partial_feedback_mode,
                                    'log_in_partial_feedback_weight_history_0',
                                    'log_in_partial_feedback_weight_history_2',
                                    'log_in_partial_feedback_weight_history_0.5',
+                                   'peiyun_partial_feedback',
+                                   'peiyun_partial_feedback_weight_history_0',
+                                   'peiyun_partial_feedback_weight_history_2',
+                                   'peiyun_partial_feedback_weight_history_0.5',
                                     ]:
         train_datasets = {idx : train_val_subsets[idx][0]
                                 for idx in range(tp_idx+1)}
@@ -355,7 +366,34 @@ def get_loss_func(partial_feedback_mode):
             loss[history_mask] = loss[history_mask] * history_weight
             loss[current_mask] = loss[current_mask] * current_weight
             return loss
-        return loss_func                        
+        return loss_func 
+    elif partial_feedback_mode in ['peiyun_partial_feedback',
+                                   'peiyun_partial_feedback_weight_history_0',
+                                   'peiyun_partial_feedback_weight_history_2',
+                                   'peiyun_partial_feedback_weight_history_0.5',]:
+        prefix_str = 'peiyun_partial_feedback_weight_history_'
+        if prefix_str in partial_feedback_mode:
+            history_weight = float(partial_feedback_mode[len(prefix_str):])
+            current_weight = 2. - history_weight
+        else:
+            history_weight = current_weight = 1.
+
+        def loss_func(outputs, hot_vector):
+            history_mask = hot_vector.sum(1) != 1.
+            current_mask = hot_vector.sum(1) == 1.
+
+            hot_vector = hot_vector.to(outputs.device)
+
+            outputs = outputs - outputs.max(1)[0].unsqueeze(1)
+            # loss = - ( (outputs * hot_vector).sum(1) - torch.log((torch.exp(outputs)).sum(1)))
+            prob = torch.nn.Softmax(dim=1)(outputs)
+            prob_mask = (prob * hot_vector).sum(dim=1)
+            loss = -torch.log(prob_mask)
+
+            loss[history_mask] = loss[history_mask] * history_weight
+            loss[current_mask] = loss[current_mask] * current_weight
+            return loss
+        return loss_func                         
     else:
         raise NotImplementedError()
 

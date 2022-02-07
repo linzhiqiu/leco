@@ -15,6 +15,8 @@ import torch
 import torchvision
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
+SAVE_BEST_MODEL = False
+
 argparser = argparse.ArgumentParser()
 argparser.add_argument("--data_dir", 
                         default='/scratch/leco/',
@@ -41,7 +43,6 @@ argparser.add_argument("--hparam_candidate",
                         help="The hyperparameter candidates (str) for next time period")
 argparser.add_argument('--seed', default=None, type=int,
                        help='seed for initializing training. ')
-
 
 def train(loaders,
           model,
@@ -117,7 +118,8 @@ def train(loaders,
                     best_result['best_epoch'] = epoch
                     best_result['best_acc'] = avg_acc
                     best_result['best_loss'] = avg_loss
-                    best_result['best_model'] = copy.deepcopy(model.state_dict())
+                    if SAVE_BEST_MODEL:
+                        best_result['best_model'] = copy.deepcopy(model.state_dict())
 
             print(
                 f"Epoch {epoch}: Average {phase} Loss {avg_loss}, Accuracy {avg_acc:.2%}")
@@ -126,7 +128,8 @@ def train(loaders,
         f"Test Accuracy (for best validation accuracy model): {avg_results['test']['acc_per_epoch'][best_result['best_epoch']]:.2%}")
     print(
         f"Best Test Accuracy overall: {max(avg_results['test']['acc_per_epoch']):.2%}")
-    model.load_state_dict(best_result['best_model'])
+    if SAVE_BEST_MODEL:
+        model.load_state_dict(best_result['best_model'])
     test_acc = test(loaders['test'], model, tp_idx)
     print(f"Verify the best test accuracy for best validation accuracy is indeed {test_acc:.2%}")
     acc_result = {phase: avg_results[phase]['acc_per_epoch'][best_result['best_epoch']]

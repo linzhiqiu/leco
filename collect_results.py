@@ -1,13 +1,13 @@
-# 0-17: python collect_results.py --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
+# 0-13: python collect_results.py --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
 
-# 0-17: python collect_results.py --partial_feedback_mode partial_feedback --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
-# 0-17: python collect_results.py --partial_feedback_mode partial_feedback_weight_history_0 --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
-# 0-17: python collect_results.py --partial_feedback_mode partial_feedback_weight_history_2 --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
-# 0-17: python collect_results.py --partial_feedback_mode partial_feedback_weight_history_0.5 --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
-# 0-17: python collect_results.py --partial_feedback_mode log_in_partial_feedback --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
-# 0-17: python collect_results.py --partial_feedback_mode log_in_partial_feedback_weight_history_0 --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
-# 0-17: python collect_results.py --partial_feedback_mode log_in_partial_feedback_weight_history_2 --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
-# 0-17: python collect_results.py --partial_feedback_mode log_in_partial_feedback_weight_history_0.5 --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
+# 0-13: python collect_results.py --partial_feedback_mode partial_feedback --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
+# 0-13: python collect_results.py --partial_feedback_mode partial_feedback_weight_history_0 --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
+# 0-13: python collect_results.py --partial_feedback_mode partial_feedback_weight_history_2 --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
+# 0-13: python collect_results.py --partial_feedback_mode partial_feedback_weight_history_0.5 --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
+# 0-13: python collect_results.py --partial_feedback_mode log_in_partial_feedback --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
+# 0-13: python collect_results.py --partial_feedback_mode log_in_partial_feedback_weight_history_0 --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
+# 0-13: python collect_results.py --partial_feedback_mode log_in_partial_feedback_weight_history_2 --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
+# 0-13: python collect_results.py --partial_feedback_mode log_in_partial_feedback_weight_history_0.5 --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
 
 
 

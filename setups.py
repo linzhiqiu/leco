@@ -14,6 +14,16 @@ class Setup():
         self.replace = replace # whether to sample with replacement per time period
 
 SETUPS = {
+    'cifar10_buffer_2000_500_both_image_same_model' : Setup( # Don't run this along
+        'CIFAR10',
+        tp_buffers=[(2000, 500), (4000, 1000)], # each element is a tuple of (train_set_size:int, val_set_size:int)
+        replace='same_image'
+    ),
+    'cifar10_buffer_2000_500_same_image_same_model' : Setup( # Don't run this along
+        'CIFAR10',
+        tp_buffers=[(2000, 500), (2000, 500)], # each element is a tuple of (train_set_size:int, val_set_size:int)
+        replace='same_image'
+    ),
     'cifar10_buffer_2000_500' : Setup(
         'CIFAR10',
         tp_buffers=[(2000, 500), (2000, 500)], # each element is a tuple of (train_set_size:int, val_set_size:int)
@@ -90,7 +100,21 @@ def generate_dataset(data_dir, setup : Setup, annotation_file=''):
     print(f"Length of trainset is {len(trainset)}")
     
     train_val_subsets = []
-    if setup.replace:
+    if setup.replace == 'same_image':
+        print("Use same image!")
+        len_of_trainset = len(trainset)
+        indices_trainset = list(range(len_of_trainset))
+        random.shuffle(indices_trainset)
+        tp_buffer_train_count = None
+        for _, (tp_buffer_train, tp_buffer_val) in enumerate(setup.tp_buffers):
+            if tp_buffer_train_count == None:
+                tp_buffer_train_count = tp_buffer_train
+            else:
+                assert tp_buffer_train_count == tp_buffer_train
+            indices_tp_train, indices_tp_val = indices_trainset[:tp_buffer_train], indices_trainset[tp_buffer_train:tp_buffer_train+tp_buffer_val]
+            train_val_subsets.append((torch.utils.data.Subset(trainset, indices_tp_train), torch.utils.data.Subset(trainset, indices_tp_val)) )
+    elif setup.replace:
+    # if setup.replace == True:
         print('Sample with replacement!')
         len_of_trainset = len(trainset)
         
@@ -113,4 +137,4 @@ def generate_dataset(data_dir, setup : Setup, annotation_file=''):
 
 if __name__ == "__main__":
     import pdb; pdb.set_trace()
-    generate_dataset('/scratch/leco/', SETUPS['cifar10_buffer_2000_500'])
+    generate_dataset('/scratch/leco/', SETUPS['cifar10_buffer_2000_500_same_image_same_model'])
