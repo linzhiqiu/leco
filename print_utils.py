@@ -24,3 +24,9 @@ def get_exp_str_from_partial_feedback(partial_feedback_mode : str, tp_idx : int)
         return ""
     else:
         return partial_feedback_mode
+
+def get_exp_str_from_multi_head(multi_head_mode : str, tp_idx : int):
+    if tp_idx == 0 or multi_head_mode == None:
+        return ""
+    else:
+        return multi_head_mode

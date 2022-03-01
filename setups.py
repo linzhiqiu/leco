@@ -14,16 +14,16 @@ class Setup():
         self.replace = replace # whether to sample with replacement per time period
 
 SETUPS = {
-    'cifar10_buffer_2000_500_both_image_same_model' : Setup( # Don't run this along
-        'CIFAR10',
-        tp_buffers=[(2000, 500), (4000, 1000)], # each element is a tuple of (train_set_size:int, val_set_size:int)
-        replace='same_image'
-    ),
-    'cifar10_buffer_2000_500_same_image_same_model' : Setup( # Don't run this along
-        'CIFAR10',
-        tp_buffers=[(2000, 500), (2000, 500)], # each element is a tuple of (train_set_size:int, val_set_size:int)
-        replace='same_image'
-    ),
+    # 'cifar10_buffer_2000_500_both_image_same_model' : Setup( # Don't run this along
+    #     'CIFAR10',
+    #     tp_buffers=[(2000, 500), (4000, 1000)], # each element is a tuple of (train_set_size:int, val_set_size:int)
+    #     replace='same_image'
+    # ),
+    # 'cifar10_buffer_2000_500_same_image_same_model' : Setup( # Don't run this along
+    #     'CIFAR10',
+    #     tp_buffers=[(2000, 500), (2000, 500)], # each element is a tuple of (train_set_size:int, val_set_size:int)
+    #     replace='same_image'
+    # ),
     'cifar10_buffer_2000_500' : Setup(
         'CIFAR10',
         tp_buffers=[(2000, 500), (2000, 500)], # each element is a tuple of (train_set_size:int, val_set_size:int)

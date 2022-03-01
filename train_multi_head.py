@@ -4,7 +4,7 @@ import random
 import numpy as np
 import configs
 from util import load_pickle, save_obj_as_pickle, makedirs
-from models import update_model, make_optimizer, make_scheduler
+from models import load_model, make_optimizer, make_scheduler, get_fc_size, MLP
 import hparams
 import setups
 import print_utils
@@ -15,20 +15,11 @@ import torch
 import torchvision
 device = "cuda" if torch.cuda.is_available() else "cpu"
 SAVE_BEST_MODEL = False
-PARTIAL_FEEDBACK_MODES = [
-    'partial_feedback', # Naively mix all history and current samples, using modified (log out) peiyun's loss function
-    'partial_feedback_weight_history_0', # Naively mix all history and current samples, using modified (log out) peiyun's loss function, but weight history sample with weight 0 (sanity check)
-    'partial_feedback_weight_history_2', # Naively mix all history and current samples, using modified (log out) peiyun's loss function, but weight history sample with weight 2 and current sample with 0
-    'partial_feedback_weight_history_0.5', # Naively mix all history and current samples, using modified (log out) peiyun's loss function, but weight history sample with weight 0.5 and current sample with 1.5
-    'peiyun_partial_feedback', # Naively mix all history and current samples, using peiyun's loss function with the summation outside log func
-    'peiyun_partial_feedback_weight_history_0', # Naively mix all history and current samples, using peiyun's loss function, but weight history sample with weight 0 (sanity check)
-    'peiyun_partial_feedback_weight_history_2', # Naively mix all history and current samples, using peiyun's loss function, but weight history sample with weight 2 and current sample with 0
-    'peiyun_partial_feedback_weight_history_0.5', # Naively mix all history and current samples, using peiyun's loss function, but weight history sample with weight 0.5 and current sample with 1.5
-    # 'log_in_partial_feedback', # Naively mix all history and current samples, using peiyun's loss function with the summation outside log func
-    # 'log_in_partial_feedback_weight_history_0', # Naively mix all history and current samples, using peiyun's loss function, but weight history sample with weight 0 (sanity check)
-    # 'log_in_partial_feedback_weight_history_2', # Naively mix all history and current samples, using peiyun's loss function, but weight history sample with weight 2 and current sample with 0
-    # 'log_in_partial_feedback_weight_history_0.5', # Naively mix all history and current samples, using peiyun's loss function, but weight history sample with weight 0.5 and current sample with 1.5
-    'no_history', # For test purpose, no history samples, using softmax loss (our modified version)
+MULTI_HEAD_MODES = [
+    'two_head_ratio_50_50', # Naively mix all history and current samples, using equal weight
+    'two_head_ratio_20_80', # Naively mix all history and current samples, history * 20% + current * 80%
+    'two_head_ratio_80_20', # Naively mix all history and current samples, history * 80% + current * 20%
+    'two_head_ratio_0_100', # Naively mix all history and current samples, history * 0% + current * 100%
 ]
 
 argparser = argparse.ArgumentParser()
@@ -43,11 +34,11 @@ argparser.add_argument("--setup_mode",
                         default='cifar10_buffer_2000_500',
                         choices=setups.SETUPS.keys(),
                         help="The dataset setup mode")  
-argparser.add_argument("--partial_feedback_mode",
+argparser.add_argument("--multi_head_mode",
                         type=str,
-                        default='partial_feedback',
-                        choices=PARTIAL_FEEDBACK_MODES,
-                        help="The partial feedback mode")  
+                        default='two_head_ratio_50_50',
+                        choices=MULTI_HEAD_MODES,
+                        help="The multi head mode (only support two heads)")  
 argparser.add_argument("--train_mode",
                         type=str,
                         default='resnet18_simclr_0_freeze_pt_linear_1_freeze_pt_linear',
@@ -71,6 +62,15 @@ def is_better(select_criterion, curr_value, best_value):
     else:
         return curr_value > best_value
 
+class MultiHead(torch.nn.Module):
+    def __init__(self, list_of_fcs):
+        super().__init__()
+        self.fc0 = list_of_fcs[0]
+        self.fc1 = list_of_fcs[1]
+    
+    def forward(self, x):
+        return self.fc0(x), self.fc1(x)
+
 def train(loaders,
           model,
           optimizer,
@@ -78,9 +78,9 @@ def train(loaders,
           epochs,
           tp_idx,
           loss_func, # loss_func takes model's output, time index, label as input, and return loss value
-          hot_vector_func, # make a hot vector
           select_criterion='acc_per_epoch'):
     model = model.to(device)
+    
 
     avg_results = {'train': {'history_loss_per_epoch': [], 'history_acc_per_epoch': [],
                              'current_loss_per_epoch': [], 'current_acc_per_epoch': [],
@@ -100,7 +100,7 @@ def train(loaders,
                    'best_epoch': None,
                    'best_model': None,
                    'best_criterion':select_criterion}
-
+    best_model = None
     for epoch in range(0, epochs):
         print(f"Epoch {epoch}")
         for phase in phases:
@@ -140,12 +140,9 @@ def train(loaders,
                     optimizer.zero_grad()
 
                 with torch.set_grad_enabled(phase == 'train'):
-                    outputs = model(inputs)
-                    _, preds = torch.max(outputs, 1)
-                    # import pdb; pdb.set_trace()
-                    hot_vector = hot_vector_func(time_indices, labels, device=outputs.device)
-                    # The loss should be averaged across all samples
-                    loss = loss_func(outputs, hot_vector)
+                    outputs_0, outputs_1 = model(inputs)
+                    _, preds = torch.max(outputs_1, 1)
+                    loss = loss_func([outputs_0, outputs_1], time_indices, labels)
                     
                     if phase == 'train':
                         loss.mean().backward()
@@ -159,7 +156,7 @@ def train(loaders,
                 #     print(f"{batch} has loss {running_loss}")
                 running_loss_current += loss[time_indices==tp_idx].sum().item()
                 running_loss_history += loss[time_indices!=tp_idx].sum().item()
-                corrects = torch.tensor([hot_vector[i, pred].item() for i, pred in enumerate(preds)])
+                corrects = torch.tensor([labels[time_indices[i]][i] == pred.item() for i, pred in enumerate(preds)])
                 running_corrects += corrects.sum().item()
                 running_corrects_current += corrects[time_indices==tp_idx].sum().item()
                 running_corrects_history += corrects[time_indices!=tp_idx].sum().item()
@@ -203,8 +200,9 @@ def train(loaders,
                     # best_result['best_current_acc'] = avg_acc_current
                     # best_result['best_current_loss'] = avg_loss_current
                     best_result['best_value'] = curr_value
+                    best_model = copy.deepcopy(model.state_dict())
                     if SAVE_BEST_MODEL:
-                        best_result['best_model'] = copy.deepcopy(model.state_dict())
+                        best_result['best_model'] = best_model
             print(
                 f"Epoch {epoch}: Average {phase} Loss {avg_loss:.4f}, Acc {avg_acc:.2%}; {phase_str}")
         print()
@@ -212,8 +210,7 @@ def train(loaders,
         f"Test Accuracy (for best val {select_criterion} model): {avg_results['test']['acc_per_epoch'][best_result['best_epoch']]:.2%}")
     print(
         f"Best Test Accuracy overall: {max(avg_results['test']['acc_per_epoch']):.2%}")
-    if SAVE_BEST_MODEL:
-        model.load_state_dict(best_result['best_model'])
+    model.load_state_dict(best_model)
     test_acc = test(loaders['test'], model, tp_idx)
     print(f"Verify the best test accuracy for best val {select_criterion} is indeed {test_acc:.2%}")
     acc_result = {phase: avg_results[phase]['acc_per_epoch'][best_result['best_epoch']]
@@ -235,8 +232,8 @@ def test(test_loader,
         labels = labels[tp_idx].to(device)
 
         with torch.set_grad_enabled(False):
-            outputs = model(inputs)
-            _, preds = torch.max(outputs, 1)
+            _, outputs_1 = model(inputs)
+            _, preds = torch.max(outputs_1, 1)
 
         # statistics
         running_corrects += torch.sum(preds == labels.data)
@@ -267,152 +264,108 @@ class TimestampDataset(torch.utils.data.Dataset):
         sample, label = self.datasets[time][dataset_index]
         return sample, time, label
         
-def get_train_set(partial_feedback_mode,
+def get_train_set(multi_head_mode,
                   train_val_subsets,
                   tp_idx):
-    if partial_feedback_mode == 'no_history':
-        train_datasets = {tp_idx : train_val_subsets[tp_idx][0]} # Only the current train set is used
-        val_datasets = {tp_idx : train_val_subsets[tp_idx][1]} # Only the current val set is used
-    elif partial_feedback_mode in ['partial_feedback', 
-                                   'partial_feedback_weight_history_0',
-                                   'partial_feedback_weight_history_2',
-                                   'partial_feedback_weight_history_0.5',
-                                   'log_in_partial_feedback',
-                                   'log_in_partial_feedback_weight_history_0',
-                                   'log_in_partial_feedback_weight_history_2',
-                                   'log_in_partial_feedback_weight_history_0.5',
-                                   'peiyun_partial_feedback',
-                                   'peiyun_partial_feedback_weight_history_0',
-                                   'peiyun_partial_feedback_weight_history_2',
-                                   'peiyun_partial_feedback_weight_history_0.5',
-                                    ]:
+    if multi_head_mode in MULTI_HEAD_MODES:
         train_datasets = {idx : train_val_subsets[idx][0]
                                 for idx in range(tp_idx+1)}
         val_datasets = {tp_idx : train_val_subsets[tp_idx][1]}  # Only the current val set is used
+    else:
+        raise NotImplementedError()
     return TimestampDataset(train_datasets), TimestampDataset(val_datasets)
 
-def get_make_hot_vector_func(superclass_to_subclass,
-                             num_of_classes,
-                             tp_idx):
-    # superclass_to_subclass[tp_idx][super_class_time][super_class_idx] is the set
-    # of indices (in current_time:tp_idx) included in the superclass
-
-    # Return a function that makes a one hot vector from timestamp and labels
-    num_of_leaf_classes = num_of_classes[tp_idx]
-    def make_hot_vector(time_indices, labels, device='cuda'):
-        hot_vector = torch.zeros((time_indices.shape[0], num_of_leaf_classes)).to(device)
-        # import pdb; pdb.set_trace()
-        for idx, super_class_time in enumerate(time_indices):
-            super_class_idx = int(labels[int(super_class_time)][idx])
-            # if super_class_time < tp_idx:
-            label_indices = superclass_to_subclass[tp_idx][int(super_class_time)][super_class_idx]
-            hot_vector[idx, label_indices] = 1
-            # import pdb; pdb.set_trace()
-            # elif super_class_time == tp_idx:
-            #     hot_vector[idx, label_idx] = 1
-            # else:
-            #     raise ValueError('Invalid time index')
-        return hot_vector
-    return make_hot_vector
-
-def get_loss_func(partial_feedback_mode):
-    if partial_feedback_mode in ['no_history',
-                                 'partial_feedback',
-                                 'partial_feedback_weight_history_0',
-                                 'partial_feedback_weight_history_2',
-                                 'partial_feedback_weight_history_0.5',
-                                 ]:
-        # Regular softmax loss if no_history
-        prefix_str = 'partial_feedback_weight_history_'
-        if prefix_str in partial_feedback_mode:
-            history_weight = float(partial_feedback_mode[len(prefix_str):])
-            current_weight = 2. - history_weight
+def get_loss_func(multi_head_mode):
+    if multi_head_mode in ['two_head_ratio_50_50', # Naively mix all history and current samples, using equal weight
+                           'two_head_ratio_20_80', # Naively mix all history and current samples, history * 20% + current * 80%
+                           'two_head_ratio_80_20', # Naively mix all history and current samples, history * 80% + current * 20%
+                           'two_head_ratio_0_100', # Naively mix all history and current samples, history * 0% + current * 100%
+    ]:
+        prefix_str = 'two_head_ratio_'
+        if prefix_str in multi_head_mode:
+            ratio_str = multi_head_mode[len(prefix_str):]
+            history_weight, current_weight = [float(w)/100. for w in ratio_str.split("_")]
+            print(f"History weight {history_weight}; Current weight {current_weight}")
         else:
-            history_weight = current_weight = 1.
-
-        def loss_func(outputs, hot_vector):
-            hot_vector = hot_vector.to(outputs.device)
-            history_mask = hot_vector.sum(1) != 1.
-            current_mask = hot_vector.sum(1) == 1.
+            raise NotImplementedError()
+        
+        criterion = torch.nn.NLLLoss(reduction='none')
+        def loss_func(outputs_list, time_indices, labels):
+            outputs_0, outputs_1 = outputs_list
+            labels_0, labels_1 = labels
+            labels_0 = labels_0.to(outputs_0.device)
+            labels_1 = labels_1.to(outputs_1.device)
+            history_mask = time_indices != 1.
+            current_mask = time_indices == 1.
             
-            # prob = torch.nn.Softmax(dim=1)(outputs)
-            log_prob = torch.nn.LogSoftmax(dim=1)(outputs)
-            # loss = -(torch.log(prob) * hot_vector).sum(dim=1) # This is not numerically stable
-            loss = -(log_prob * hot_vector).sum(dim=1)
-            loss[history_mask] = loss[history_mask] * history_weight
-            loss[current_mask] = loss[current_mask] * current_weight
+            log_prob_0 = torch.nn.functional.log_softmax(outputs_0, dim=1)
+            log_prob_1 = torch.nn.functional.log_softmax(outputs_1, dim=1)
+            loss = torch.zeros(outputs_0.shape[0]).to(outputs_1.device)
+            loss[history_mask] = history_weight * criterion(log_prob_0[history_mask], labels_0[history_mask])
+            loss[current_mask] = current_weight * criterion(log_prob_1[current_mask], labels_1[current_mask])
             return loss
         return loss_func
-    elif partial_feedback_mode in ['log_in_partial_feedback',
-                                   'log_in_partial_feedback_weight_history_0',
-                                   'log_in_partial_feedback_weight_history_2',
-                                   'log_in_partial_feedback_weight_history_0.5',]:
-        prefix_str = 'log_in_partial_feedback_weight_history_'
-        if prefix_str in partial_feedback_mode:
-            history_weight = float(partial_feedback_mode[len(prefix_str):])
-            current_weight = 2. - history_weight
-        else:
-            history_weight = current_weight = 1.
-
-        def loss_func(outputs, hot_vector):
-            history_mask = hot_vector.sum(1) != 1.
-            current_mask = hot_vector.sum(1) == 1.
-
-            hot_vector = hot_vector.to(outputs.device)
-
-            outputs = outputs - outputs.max(1)[0].unsqueeze(1)
-            loss = - ( (outputs * hot_vector).sum(1) - torch.log((torch.exp(outputs)).sum(1)))
-
-            loss[history_mask] = loss[history_mask] * history_weight
-            loss[current_mask] = loss[current_mask] * current_weight
-            return loss
-        return loss_func 
-    elif partial_feedback_mode in ['peiyun_partial_feedback',
-                                   'peiyun_partial_feedback_weight_history_0',
-                                   'peiyun_partial_feedback_weight_history_2',
-                                   'peiyun_partial_feedback_weight_history_0.5',]:
-        prefix_str = 'peiyun_partial_feedback_weight_history_'
-        if prefix_str in partial_feedback_mode:
-            history_weight = float(partial_feedback_mode[len(prefix_str):])
-            current_weight = 2. - history_weight
-        else:
-            history_weight = current_weight = 1.
-
-        def loss_func(outputs, hot_vector):
-            history_mask = hot_vector.sum(1) != 1.
-            current_mask = hot_vector.sum(1) == 1.
-
-            hot_vector = hot_vector.to(outputs.device)
-
-            outputs = outputs - outputs.max(1)[0].unsqueeze(1)
-            # loss = - ( (outputs * hot_vector).sum(1) - torch.log((torch.exp(outputs)).sum(1)))
-            prob = torch.nn.Softmax(dim=1)(outputs)
-            prob_mask = (prob * hot_vector).sum(dim=1)
-            loss = -torch.log(prob_mask)
-
-            loss[history_mask] = loss[history_mask] * history_weight
-            loss[current_mask] = loss[current_mask] * current_weight
-            return loss
-        return loss_func                         
     else:
         raise NotImplementedError()
 
-def start_training_partial_feedback(model,
-                                    model_save_dir,
-                                    tp_idx,
-                                    train_mode,
-                                    hparams_mode,
-                                    train_val_subsets,
-                                    num_of_classes,
-                                    testset,
-                                    partial_feedback_mode,
-                                    superclass_to_subclass):
+def update_model_two_head(model, model_save_dir, tp_idx, train_mode, num_of_classes):
+    extractor_mode = train_mode.tp_configs[tp_idx].extractor_mode
+    classifier_mode = train_mode.tp_configs[tp_idx].classifier_mode
+    num_class = num_of_classes[tp_idx]
+    
+    assert tp_idx == 1
+    if classifier_mode == 'mlp_replace_last':
+        prev_fc = copy.deepcopy(model.fc)
+    old_fc = copy.deepcopy(model.fc)
+    
+    fc_size = get_fc_size(train_mode.pretrained_mode)
+    if extractor_mode in ['scratch', 'finetune_pt', 'freeze_pt', 'freeze_random']:
+        model = load_model(model_save_dir, train_mode.pretrained_mode)
+    elif extractor_mode in ['finetune_prev', 'freeze_prev']:
+        print("resume from previous feature extractor checkpoint")
+        assert model != None and tp_idx > 0
+    
+
+    if classifier_mode == 'linear':
+        new_fc = torch.nn.Linear(fc_size, num_class)
+    elif classifier_mode == 'mlp':
+        new_fc = MLP(fc_size, 1024, num_class)
+    elif classifier_mode == 'mlp_replace_last':
+        prev_fc.fc2 = torch.nn.Linear(prev_fc.hidden_size, num_class)
+        new_fc = prev_fc
+    else:
+        raise NotImplementedError()
+    
+    model.fc = MultiHead([old_fc, new_fc])
+    
+    if extractor_mode in ['scratch', 'finetune_pt', 'finetune_prev']:
+        for p in model.parameters():
+            p.requires_grad = True
+    elif extractor_mode in ['freeze_pt', 'freeze_prev', 'freeze_random']:
+        for p in model.parameters():
+            p.requires_grad = False
+        for p in model.fc.parameters():
+            p.requires_grad = True
+    else:
+        raise NotImplementedError()
+
+    return model
+
+def start_training_multi_head(model,
+                              model_save_dir,
+                              tp_idx,
+                              train_mode,
+                              hparams_mode,
+                              train_val_subsets,
+                              num_of_classes,
+                              testset,
+                              multi_head_mode):
     if tp_idx == 0:
         assert model == None
     else:
         assert model != None
     
-    model = update_model(model, model_save_dir, tp_idx, train_mode, num_of_classes)
+    model = update_model_two_head(model, model_save_dir, tp_idx, train_mode, num_of_classes)
     
     batch_size = hparams_mode['batch']
     workers = hparams_mode['workers']
@@ -429,11 +382,8 @@ def start_training_partial_feedback(model,
                                step_size=hparam_mode['decay_epochs'],
                                gamma=hparam_mode['decay_by'])
 
-    hot_vector_func = get_make_hot_vector_func(superclass_to_subclass,
-                                               num_of_classes,
-                                               tp_idx)
-    loss_func = get_loss_func(partial_feedback_mode)
-    train_set, val_set = get_train_set(partial_feedback_mode, train_val_subsets, tp_idx)
+    loss_func = get_loss_func(multi_head_mode)
+    train_set, val_set = get_train_set(multi_head_mode, train_val_subsets, tp_idx)
     loaders = {}
     loaders['train'] = torch.utils.data.DataLoader(
                            train_set,
@@ -462,7 +412,6 @@ def start_training_partial_feedback(model,
         epochs,
         tp_idx,
         loss_func,
-        hot_vector_func
     )
     return model, acc_result, best_result, avg_results
 
@@ -472,7 +421,7 @@ def start_experiment(data_dir: str, # where the data are saved, and datasets + m
                      train_mode_str: str,
                      hparam_strs, # A list of hparam str to load
                      hparam_candidate : str, # The list of hparam to try for next time period (tp_idx = len(hparam_strs))
-                     partial_feedback_mode : str, # str
+                     multi_head_mode : str, # str
                      seed=None):
     seed_str = f"seed_{seed}"
     if seed == None:
@@ -508,7 +457,7 @@ def start_experiment(data_dir: str, # where the data are saved, and datasets + m
                 hparams_mode = hparams.HPARAMS[hparams_str]
                 interim_exp_dir_tp_idx = os.path.join(setup_dir,
                                                       print_utils.get_exp_str_from_train_mode(train_mode, tp_idx=tp_idx),
-                                                      print_utils.get_exp_str_from_partial_feedback(partial_feedback_mode, tp_idx=tp_idx),
+                                                      print_utils.get_exp_str_from_multi_head(multi_head_mode, tp_idx=tp_idx),
                                                       print_utils.get_exp_str_from_hparam_strs(hparam_strs+[hparams_str], tp_idx=tp_idx))
                 makedirs(interim_exp_dir_tp_idx)
                 exp_result_path = os.path.join(interim_exp_dir_tp_idx, "result.ckpt")
@@ -516,8 +465,9 @@ def start_experiment(data_dir: str, # where the data are saved, and datasets + m
                 if os.path.exists(exp_result_path):
                     print(f"{tp_idx} time period already finished for {hparams_str}")
                 else:
+                    print(f"Run {train_mode} for TP {tp_idx}")
                     # exp_result do not exist, therefore start training
-                    new_model, acc_result, best_result, avg_results = start_training_partial_feedback(
+                    new_model, acc_result, best_result, avg_results = start_training_multi_head(
                         copy.deepcopy(model),
                         model_save_dir,
                         tp_idx,
@@ -526,12 +476,11 @@ def start_experiment(data_dir: str, # where the data are saved, and datasets + m
                         train_val_subsets,
                         [info['num_of_classes'] for info in all_tp_info],
                         testset,
-                        partial_feedback_mode,
-                        setups.get_superclass_to_subclass(leaf_idx_to_all_class_idx)
+                        multi_head_mode,
                     )
 
                     save_obj_as_pickle(exp_result_path, {
-                        # 'model' : new_model, # TODO
+                        # 'model' : new_model, #TODO
                         'acc_result' : acc_result,
                         'best_result' : best_result,
                         'avg_results' : avg_results
@@ -541,7 +490,7 @@ def start_experiment(data_dir: str, # where the data are saved, and datasets + m
         else:
             interim_exp_dir_tp_idx = os.path.join(setup_dir,
                                                   print_utils.get_exp_str_from_train_mode(train_mode, tp_idx=tp_idx),
-                                                  print_utils.get_exp_str_from_partial_feedback(partial_feedback_mode, tp_idx=tp_idx),
+                                                  print_utils.get_exp_str_from_multi_head(multi_head_mode, tp_idx=tp_idx),
                                                   print_utils.get_exp_str_from_hparam_strs(hparam_strs, tp_idx=tp_idx))
             exp_result_path = os.path.join(interim_exp_dir_tp_idx, "result.ckpt")
             # Load the model
@@ -562,5 +511,5 @@ if __name__ == '__main__':
                      args.train_mode,
                      args.hparam_strs,
                      args.hparam_candidate,
-                     args.partial_feedback_mode,
+                     args.multi_head_mode,
                      seed=args.seed)

@@ -9,7 +9,10 @@
 # 0-13: python collect_results.py --partial_feedback_mode log_in_partial_feedback_weight_history_2 --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
 # 0-13: python collect_results.py --partial_feedback_mode log_in_partial_feedback_weight_history_0.5 --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
 
-
+# 0-17: python collect_results.py --multi_head_mode two_head_ratio_0_100 --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
+# 0-17: python collect_results.py --multi_head_mode two_head_ratio_50_50 --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
+# 0-17: python collect_results.py --multi_head_mode two_head_ratio_20_80 --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
+# 0-17: python collect_results.py --multi_head_mode two_head_ratio_80_20 --hparam_candidate cifar --train_mode_candidate cifar --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet18/
 
 # 0-15: python collect_results.py --hparam_candidate inat --train_mode_candidate inat --data_dir /ssd1/leco/ --model_save_dir /data3/zhiqiul/self_supervised_models/inat2021_resnet50/
 import os
@@ -21,7 +24,7 @@ from util import load_pickle, makedirs
 import hparams
 import setups
 from tabulate import tabulate
-from print_utils import get_exp_str_from_train_mode, get_exp_str_from_hparam_strs, get_exp_str_from_partial_feedback
+from print_utils import get_exp_str_from_train_mode, get_exp_str_from_hparam_strs, get_exp_str_from_partial_feedback, get_exp_str_from_multi_head
 import configs
 import copy
 
@@ -35,6 +38,9 @@ argparser.add_argument("--model_save_dir",
 argparser.add_argument("--partial_feedback_mode", 
                         default=None, type=str,
                         help="If used partial feedback, input the mode")
+argparser.add_argument("--multi_head_mode", 
+                        default=None, type=str,
+                        help="If used multi head mode, input the mode")
 argparser.add_argument("--hparam_candidate",
                         type=str,
                         default='cifar',
@@ -188,9 +194,14 @@ def save_best_results(result_dir, result_dict, setup_mode, all_tp_info):
             file.write(tabulate(all_rows, headers=all_headers, tablefmt='orgtbl'))
             print(f"Save at {tp_file}")
 
-def prepare_scripts(data_dir, model_save_dir, setup_mode, train_mode_str, hparam_strs, hparam_candidate, seed_list, partial_feedback_mode):
+def prepare_scripts(data_dir, model_save_dir, setup_mode, train_mode_str, hparam_strs, hparam_candidate, seed_list, partial_feedback_mode, multi_head_mode):
     scripts = []
-    script_file = "train.py" if not partial_feedback_mode else f"train_partial_feedback.py --partial_feedback_mode {partial_feedback_mode}"
+    if partial_feedback_mode:
+        script_file = f"train_partial_feedback.py --partial_feedback_mode {partial_feedback_mode}"
+    elif multi_head_mode:
+        script_file = f"train_multi_head.py --multi_head_mode {multi_head_mode}"
+    else:
+        script_file = "train.py"
     for seed in seed_list:
         seed_str = f"--seed {seed}" if seed else ""
         hparam_list_str = "--hparam_strs " + " ".join(hparam_strs) if len(hparam_strs) > 0 else ""
@@ -210,13 +221,20 @@ def write_scripts_to_file(scripts_to_run, result_dir, setup_mode):
 def gather_exp(data_dir: str,
                model_save_dir : str,
                partial_feedback_mode=None,
+               multi_head_mode=None,
                hparam_candidate='cifar',
                train_mode_candidate='cifar',
                seed_list=SEED_LIST):
 
     result_dir = os.path.join(data_dir, 'results')
+    mode_use = None
     if partial_feedback_mode:
+        mode_use = 'partial_feedback'
         result_dir = os.path.join(result_dir, partial_feedback_mode)
+    elif multi_head_mode:
+        mode_use = "multi_head"
+        result_dir = os.path.join(result_dir, multi_head_mode)
+
     makedirs(result_dir)
     setup_list = list(setups.SETUPS.keys())
     train_mode_list = configs.ALL_TRAIN_MODES[train_mode_candidate]
@@ -251,9 +269,16 @@ def gather_exp(data_dir: str,
                 for hparam_str in all_candidates:
                     tp_results = []
                     for setup_dir in setup_dirs:
+                        if mode_use:
+                            if mode_use == 'partial_feedback':
+                                exp_str_middle = get_exp_str_from_partial_feedback(partial_feedback_mode, tp_idx=tp_idx)
+                            elif mode_use == 'multi_head':
+                                exp_str_middle = get_exp_str_from_multi_head(multi_head_mode, tp_idx=tp_idx)
+                        else:
+                            exp_str_middle = ""
                         exp_result_path = os.path.join(setup_dir,
                                                        get_exp_str_from_train_mode(train_mode, tp_idx=tp_idx),
-                                                       get_exp_str_from_partial_feedback(partial_feedback_mode, tp_idx=tp_idx),
+                                                       exp_str_middle,
                                                        get_exp_str_from_hparam_strs(hparam_strs+[hparam_str], tp_idx=tp_idx),
                                                        'result.ckpt')
                         if os.path.exists(exp_result_path):
@@ -311,7 +336,7 @@ def gather_exp(data_dir: str,
                     
                 else:
                     # prepare scripts for this tp_idx
-                    current_scripts = prepare_scripts(data_dir, model_save_dir, setup_mode, train_mode_str, hparam_strs, hparam_candidate, seed_list, partial_feedback_mode)
+                    current_scripts = prepare_scripts(data_dir, model_save_dir, setup_mode, train_mode_str, hparam_strs, hparam_candidate, seed_list, partial_feedback_mode, multi_head_mode)
                     scripts_to_run += current_scripts
                     print(f"Setup {setup_mode}: {len(current_scripts)} scripts for train mode {train_mode_str}.")
                     break
@@ -327,8 +352,12 @@ def gather_exp(data_dir: str,
 
 if __name__ == '__main__':
     args = argparser.parse_args()
+    if args.multi_head_mode:
+        assert args.partial_feedback_mode == None
+
     gather_exp(args.data_dir,
                args.model_save_dir,
                partial_feedback_mode=args.partial_feedback_mode,
+               multi_head_mode=args.multi_head_mode,
                hparam_candidate=args.hparam_candidate,
                train_mode_candidate=args.train_mode_candidate)
