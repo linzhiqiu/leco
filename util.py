@@ -18,6 +18,23 @@ def load_pickle(pickle_location, default_obj=None):
     else:
         return default_obj
 
+def save_as_json(json_location, obj):
+    with open(json_location, "w+") as f:
+        json.dump(obj, f)
+
+def load_json(json_location, default_obj=None):
+    if os.path.exists(json_location):
+        try:
+            with open(json_location, 'r') as f:
+                # import pdb; pdb.set_trace()
+                obj = json.load(f)
+            return obj
+        except:
+            print(f"Error loading {json_location}")
+            return default_obj
+    else:
+        return default_obj
+
 def make_optimizer(network, lr, weight_decay=1e-5, momentum=0.9):
     optimizer = torch.optim.SGD(
         list(filter(lambda x: x.requires_grad, network.parameters())),

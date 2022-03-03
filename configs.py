@@ -115,26 +115,26 @@ CIFAR_MODES = {
         None,
         [Phase('scratch', 'linear'),Phase('finetune_prev', 'linear'),]
     ),
-    "none_0_scratch_linear_1_finetune_prev_mlp" : TrainMode(
-        None,
-        [Phase('scratch', 'linear'),Phase('finetune_prev', 'mlp'),]
-    ),
-    "none_0_scratch_linear_1_freeze_prev_linear" : TrainMode(
-        None,
-        [Phase('scratch', 'linear'), Phase('freeze_prev', 'linear'),]
-    ),
-    "none_0_scratch_linear_1_freeze_prev_mlp" : TrainMode(
-        None,
-        [Phase('scratch', 'linear'),Phase('freeze_prev', 'mlp'),]
-    ),
-    "none_0_scratch_linear_1_freeze_random_linear" : TrainMode(
-        None,
-        [Phase('scratch', 'linear'), Phase('freeze_random', 'linear'),]
-    ),
-    "none_0_scratch_linear_1_freeze_random_mlp" : TrainMode(
-        None,
-        [Phase('scratch', 'linear'),Phase('freeze_random', 'mlp'),]
-    ),
+    # "none_0_scratch_linear_1_finetune_prev_mlp" : TrainMode(
+    #     None,
+    #     [Phase('scratch', 'linear'),Phase('finetune_prev', 'mlp'),]
+    # ),
+    # "none_0_scratch_linear_1_freeze_prev_linear" : TrainMode(
+    #     None,
+    #     [Phase('scratch', 'linear'), Phase('freeze_prev', 'linear'),]
+    # ),
+    # "none_0_scratch_linear_1_freeze_prev_mlp" : TrainMode(
+    #     None,
+    #     [Phase('scratch', 'linear'),Phase('freeze_prev', 'mlp'),]
+    # ),
+    # "none_0_scratch_linear_1_freeze_random_linear" : TrainMode(
+    #     None,
+    #     [Phase('scratch', 'linear'), Phase('freeze_random', 'linear'),]
+    # ),
+    # "none_0_scratch_linear_1_freeze_random_mlp" : TrainMode(
+    #     None,
+    #     [Phase('scratch', 'linear'),Phase('freeze_random', 'mlp'),]
+    # ),
 
     # resnet18_simclr
     # "resnet18_simclr_0_freeze_pt_linear_1_freeze_pt_linear" : TrainMode(
@@ -171,53 +171,53 @@ CIFAR_MODES = {
     # ),
 
     # resnet18_simclr_pl
-    "resnet18_simclr_pl_0_freeze_pt_linear_1_freeze_pt_linear" : TrainMode(
-        'resnet18_simclr_pl',
-        [Phase('freeze_pt', 'linear'),Phase('freeze_pt', 'linear'),]
-    ),
-    "resnet18_simclr_pl_0_freeze_pt_mlp_1_freeze_pt_mlp" : TrainMode(
-        'resnet18_simclr_pl',
-        [Phase('freeze_pt', 'mlp'),Phase('freeze_pt', 'mlp'),]
-    ),
-    "resnet18_simclr_pl_0_freeze_pt_mlp_1_freeze_pt_mlp_replace_last" : TrainMode(
-        'resnet18_simclr_pl',
-        [Phase('freeze_pt', 'mlp'),Phase('freeze_pt', 'mlp_replace_last'),]
-    ),
-    "resnet18_simclr_pl_0_finetune_pt_linear_1_finetune_pt_linear" : TrainMode(
-        'resnet18_simclr_pl',
-        [Phase('finetune_pt', 'linear'),Phase('finetune_pt', 'linear'),]
-    ),
-    "resnet18_simclr_pl_0_finetune_pt_linear_1_finetune_prev_linear" : TrainMode(
-        'resnet18_simclr_pl',
-        [Phase('finetune_pt', 'linear'),Phase('finetune_prev', 'linear'),]
-    ),
-    "resnet18_simclr_pl_0_finetune_pt_linear_1_finetune_prev_mlp" : TrainMode(
-        'resnet18_simclr_pl',
-        [Phase('finetune_pt', 'linear'),Phase('finetune_prev', 'mlp'),]
-    ),
-    "resnet18_simclr_pl_0_finetune_pt_linear_1_freeze_prev_linear" : TrainMode(
-        'resnet18_simclr_pl',
-        [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'linear'),]
-    ),
-    "resnet18_simclr_pl_0_finetune_pt_linear_1_freeze_prev_mlp" : TrainMode(
-        'resnet18_simclr_pl',
-        [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'mlp'),]
-    ),
+    # "resnet18_simclr_pl_0_freeze_pt_linear_1_freeze_pt_linear" : TrainMode(
+    #     'resnet18_simclr_pl',
+    #     [Phase('freeze_pt', 'linear'),Phase('freeze_pt', 'linear'),]
+    # ),
+    # "resnet18_simclr_pl_0_freeze_pt_mlp_1_freeze_pt_mlp" : TrainMode(
+    #     'resnet18_simclr_pl',
+    #     [Phase('freeze_pt', 'mlp'),Phase('freeze_pt', 'mlp'),]
+    # ),
+    # "resnet18_simclr_pl_0_freeze_pt_mlp_1_freeze_pt_mlp_replace_last" : TrainMode(
+    #     'resnet18_simclr_pl',
+    #     [Phase('freeze_pt', 'mlp'),Phase('freeze_pt', 'mlp_replace_last'),]
+    # ),
+    # "resnet18_simclr_pl_0_finetune_pt_linear_1_finetune_pt_linear" : TrainMode(
+    #     'resnet18_simclr_pl',
+    #     [Phase('finetune_pt', 'linear'),Phase('finetune_pt', 'linear'),]
+    # ),
+    # "resnet18_simclr_pl_0_finetune_pt_linear_1_finetune_prev_linear" : TrainMode(
+    #     'resnet18_simclr_pl',
+    #     [Phase('finetune_pt', 'linear'),Phase('finetune_prev', 'linear'),]
+    # ),
+    # "resnet18_simclr_pl_0_finetune_pt_linear_1_finetune_prev_mlp" : TrainMode(
+    #     'resnet18_simclr_pl',
+    #     [Phase('finetune_pt', 'linear'),Phase('finetune_prev', 'mlp'),]
+    # ),
+    # "resnet18_simclr_pl_0_finetune_pt_linear_1_freeze_prev_linear" : TrainMode(
+    #     'resnet18_simclr_pl',
+    #     [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'linear'),]
+    # ),
+    # "resnet18_simclr_pl_0_finetune_pt_linear_1_freeze_prev_mlp" : TrainMode(
+    #     'resnet18_simclr_pl',
+    #     [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'mlp'),]
+    # ),
 
 
     # resnet18_moco_v2_pl
-    "resnet18_moco_v2_pl_0_freeze_pt_linear_1_freeze_pt_linear" : TrainMode(
-        'resnet18_moco_v2_pl',
-        [Phase('freeze_pt', 'linear'),Phase('freeze_pt', 'linear'),]
-    ),
-    "resnet18_moco_v2_pl_0_freeze_pt_mlp_1_freeze_pt_mlp" : TrainMode(
-        'resnet18_moco_v2_pl',
-        [Phase('freeze_pt', 'mlp'),Phase('freeze_pt', 'mlp'),]
-    ),
-    "resnet18_moco_v2_pl_0_freeze_pt_mlp_1_freeze_pt_mlp_replace_last" : TrainMode(
-        'resnet18_moco_v2_pl',
-        [Phase('freeze_pt', 'mlp'),Phase('freeze_pt', 'mlp_replace_last'),]
-    ),
+    # "resnet18_moco_v2_pl_0_freeze_pt_linear_1_freeze_pt_linear" : TrainMode(
+    #     'resnet18_moco_v2_pl',
+    #     [Phase('freeze_pt', 'linear'),Phase('freeze_pt', 'linear'),]
+    # ),
+    # "resnet18_moco_v2_pl_0_freeze_pt_mlp_1_freeze_pt_mlp" : TrainMode(
+    #     'resnet18_moco_v2_pl',
+    #     [Phase('freeze_pt', 'mlp'),Phase('freeze_pt', 'mlp'),]
+    # ),
+    # "resnet18_moco_v2_pl_0_freeze_pt_mlp_1_freeze_pt_mlp_replace_last" : TrainMode(
+    #     'resnet18_moco_v2_pl',
+    #     [Phase('freeze_pt', 'mlp'),Phase('freeze_pt', 'mlp_replace_last'),]
+    # ),
     "resnet18_moco_v2_pl_0_finetune_pt_linear_1_finetune_pt_linear" : TrainMode(
         'resnet18_moco_v2_pl',
         [Phase('finetune_pt', 'linear'),Phase('finetune_pt', 'linear'),]
@@ -226,52 +226,52 @@ CIFAR_MODES = {
         'resnet18_moco_v2_pl',
         [Phase('finetune_pt', 'linear'),Phase('finetune_prev', 'linear'),]
     ),
-    "resnet18_moco_v2_pl_0_finetune_pt_linear_1_finetune_prev_mlp" : TrainMode(
-        'resnet18_moco_v2_pl',
-        [Phase('finetune_pt', 'linear'),Phase('finetune_prev', 'mlp'),]
-    ),
-    "resnet18_moco_v2_pl_0_finetune_pt_linear_1_freeze_prev_linear" : TrainMode(
-        'resnet18_moco_v2_pl',
-        [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'linear'),]
-    ),
-    "resnet18_moco_v2_pl_0_finetune_pt_linear_1_freeze_prev_mlp" : TrainMode(
-        'resnet18_moco_v2_pl',
-        [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'mlp'),]
-    ),
+    # "resnet18_moco_v2_pl_0_finetune_pt_linear_1_finetune_prev_mlp" : TrainMode(
+    #     'resnet18_moco_v2_pl',
+    #     [Phase('finetune_pt', 'linear'),Phase('finetune_prev', 'mlp'),]
+    # ),
+    # "resnet18_moco_v2_pl_0_finetune_pt_linear_1_freeze_prev_linear" : TrainMode(
+    #     'resnet18_moco_v2_pl',
+    #     [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'linear'),]
+    # ),
+    # "resnet18_moco_v2_pl_0_finetune_pt_linear_1_freeze_prev_mlp" : TrainMode(
+    #     'resnet18_moco_v2_pl',
+    #     [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'mlp'),]
+    # ),
 
     # resnet18_byol_pl
-    "resnet18_byol_pl_0_freeze_pt_linear_1_freeze_pt_linear" : TrainMode(
-        'resnet18_byol_pl',
-        [Phase('freeze_pt', 'linear'),Phase('freeze_pt', 'linear'),]
-    ),
-    "resnet18_byol_pl_0_freeze_pt_mlp_1_freeze_pt_mlp" : TrainMode(
-        'resnet18_byol_pl',
-        [Phase('freeze_pt', 'mlp'),Phase('freeze_pt', 'mlp'),]
-    ),
-    "resnet18_byol_pl_0_freeze_pt_mlp_1_freeze_pt_mlp_replace_last" : TrainMode(
-        'resnet18_byol_pl',
-        [Phase('freeze_pt', 'mlp'),Phase('freeze_pt', 'mlp_replace_last'),]
-    ),
-    "resnet18_byol_pl_0_finetune_pt_linear_1_finetune_pt_linear" : TrainMode(
-        'resnet18_byol_pl',
-        [Phase('finetune_pt', 'linear'),Phase('finetune_pt', 'linear'),]
-    ),
-    "resnet18_byol_pl_0_finetune_pt_linear_1_finetune_prev_linear" : TrainMode(
-        'resnet18_byol_pl',
-        [Phase('finetune_pt', 'linear'),Phase('finetune_prev', 'linear'),]
-    ),
-    "resnet18_byol_pl_0_finetune_pt_linear_1_finetune_prev_mlp" : TrainMode(
-        'resnet18_byol_pl',
-        [Phase('finetune_pt', 'linear'),Phase('finetune_prev', 'mlp'),]
-    ),
-    "resnet18_byol_pl_0_finetune_pt_linear_1_freeze_prev_linear" : TrainMode(
-        'resnet18_byol_pl',
-        [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'linear'),]
-    ),
-    "resnet18_byol_pl_0_finetune_pt_linear_1_freeze_prev_mlp" : TrainMode(
-        'resnet18_byol_pl',
-        [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'mlp'),]
-    ),
+    # "resnet18_byol_pl_0_freeze_pt_linear_1_freeze_pt_linear" : TrainMode(
+    #     'resnet18_byol_pl',
+    #     [Phase('freeze_pt', 'linear'),Phase('freeze_pt', 'linear'),]
+    # ),
+    # "resnet18_byol_pl_0_freeze_pt_mlp_1_freeze_pt_mlp" : TrainMode(
+    #     'resnet18_byol_pl',
+    #     [Phase('freeze_pt', 'mlp'),Phase('freeze_pt', 'mlp'),]
+    # ),
+    # "resnet18_byol_pl_0_freeze_pt_mlp_1_freeze_pt_mlp_replace_last" : TrainMode(
+    #     'resnet18_byol_pl',
+    #     [Phase('freeze_pt', 'mlp'),Phase('freeze_pt', 'mlp_replace_last'),]
+    # ),
+    # "resnet18_byol_pl_0_finetune_pt_linear_1_finetune_pt_linear" : TrainMode(
+    #     'resnet18_byol_pl',
+    #     [Phase('finetune_pt', 'linear'),Phase('finetune_pt', 'linear'),]
+    # ),
+    # "resnet18_byol_pl_0_finetune_pt_linear_1_finetune_prev_linear" : TrainMode(
+    #     'resnet18_byol_pl',
+    #     [Phase('finetune_pt', 'linear'),Phase('finetune_prev', 'linear'),]
+    # ),
+    # "resnet18_byol_pl_0_finetune_pt_linear_1_finetune_prev_mlp" : TrainMode(
+    #     'resnet18_byol_pl',
+    #     [Phase('finetune_pt', 'linear'),Phase('finetune_prev', 'mlp'),]
+    # ),
+    # "resnet18_byol_pl_0_finetune_pt_linear_1_freeze_prev_linear" : TrainMode(
+    #     'resnet18_byol_pl',
+    #     [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'linear'),]
+    # ),
+    # "resnet18_byol_pl_0_finetune_pt_linear_1_freeze_prev_mlp" : TrainMode(
+    #     'resnet18_byol_pl',
+    #     [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'mlp'),]
+    # ),
 }
 
 TRAIN_MODES = {
