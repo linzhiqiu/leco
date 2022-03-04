@@ -29,8 +29,8 @@ SEMI_SUPERVISED_ALG = [
     None, # Not adding SSL loss
     'PL', # Pseudo-labelling with hard thresholding
     'FixMatch', # FixMatch with hard thresholding
-    'Distill_Hard', # Self-training with distillation (hard-label cross entropy)
-    'Distill_Soft', # Self-training with distillation (soft-label KL divergence)
+    'DistillHard', # Self-training with distillation (hard-label cross entropy)
+    'DistillSoft', # Self-training with distillation (soft-label KL divergence)
 ]
 
 PL_THRESHOLDS = [
@@ -61,7 +61,7 @@ FINETUNING = [
 
 argparser = argparse.ArgumentParser()
 argparser.add_argument("--data_dir", 
-                        default='/scratch/leco/',
+                        default='/ssd1/leco/',
                         help="Where the dataset and final accuracy results will be saved.")
 argparser.add_argument("--model_save_dir", 
                         default='/data3/zhiqiul/self_supervised_models/resnet18/',
@@ -91,7 +91,7 @@ argparser.add_argument("--partial_feedback_mode",
                         default=None,
                         choices=PARTIAL_FEEDBACK_MODE,
                         help="The partial feedback loss to use. Default is None")
-argparser.add_argument("--hierarchical_supervision_mode",
+argparser.add_argument("--hierarchical_ssl",
                         type=str,
                         default=None,
                         choices=HIERARCHICAL_SEMI_SUPERVISION,
@@ -123,19 +123,19 @@ argparser.add_argument('--seed', default=None, type=int,
 def get_exp_str_from_semi_args(ratio_unlabeled_to_labeled: float=1.,
                                semi_supervised_alg: str=None,
                                pl_threshold: float=None,
-                               hierarchical_supervision_mode: str=None,
+                               hierarchical_ssl: str=None,
                                finetuning_mode: str=None):
     if semi_supervised_alg:
         name = f"{semi_supervised_alg}_R_{ratio_unlabeled_to_labeled}"
         if semi_supervised_alg in ['PL', "FixMatch"]:
             name += f"_T_{pl_threshold}"
-        elif semi_supervised_alg in ['Distill_Hard', 'Distill_Soft']:
+        elif semi_supervised_alg in ['DistillHard', 'DistillSoft']:
             pass
         else:
             raise NotImplementedError()
 
-        if hierarchical_supervision_mode:
-            name += f"_H_{hierarchical_supervision_mode}"
+        if hierarchical_ssl:
+            name += f"_H_{hierarchical_ssl}"
         
         if finetuning_mode:
             name += f"_F_{finetuning_mode}"
@@ -156,7 +156,7 @@ def get_semi_supervised_dir(setup_dir,
                             semi_supervised_alg: str=None,
                             pl_threshold: float=None,
                             partial_feedback_mode: str=None,
-                            hierarchical_supervision_mode: str=None,
+                            hierarchical_ssl: str=None,
                             finetuning_mode: str=None,
                             tp_idx: int=1):
     assert tp_idx == 1
@@ -168,11 +168,10 @@ def get_semi_supervised_dir(setup_dir,
                                 ratio_unlabeled_to_labeled=ratio_unlabeled_to_labeled,
                                 semi_supervised_alg=semi_supervised_alg,
                                 pl_threshold=pl_threshold,
-                                hierarchical_supervision_mode=hierarchical_supervision_mode,
+                                hierarchical_ssl=hierarchical_ssl,
                                 finetuning_mode=finetuning_mode
                             ),
                             print_utils.get_exp_str_from_hparam_strs(hparam_list, tp_idx=tp_idx))
-    import pdb; pdb.set_trace()
     return dir_name
 
 def is_better(select_criterion, curr_value, best_value):
@@ -187,7 +186,7 @@ class MultiHead(torch.nn.Module):
     def __init__(self, list_of_fcs):
         super().__init__()
         self.list_of_fcs = list_of_fcs
-        for idx, fc in list_of_fcs:
+        for idx, fc in enumerate(list_of_fcs):
             setattr(self, f"fc{idx}", fc)
     
     def forward(self, x):
@@ -201,7 +200,6 @@ def train(loaders,
           epochs,
           tp_idx,
           select_criterion='acc_per_epoch'):
-    assert tp_idx == 0
     model = model.to(device)
     criterion = torch.nn.NLLLoss(reduction='mean')
 
@@ -290,16 +288,10 @@ def train(loaders,
                   for phase in phases}
     return model, acc_result, best_result, avg_results
 
-def get_l_loss_func(partial_feedback_mode):
+def get_l_loss_func():
     nll_criterion = torch.nn.NLLLoss(reduction='mean')
     def l_loss_func(outputs, labels):
-        if partial_feedback_mode in [None, 'single_head']:
-            log_probability = torch.nn.functional.log_softmax(outputs, dim=1)
-        elif partial_feedback_mode == 'two_head':
-            _, outputs_1 = outputs
-            log_probability = torch.nn.functional.log_softmax(outputs_1, dim=1)
-        else:
-            raise NotImplementedError()
+        log_probability = torch.nn.functional.log_softmax(outputs, dim=1)
         return nll_criterion(log_probability, labels)
     return l_loss_func
 
@@ -312,12 +304,14 @@ def get_coarse_loss_func(edge_matrix, partial_feedback_mode):
             outputs = outputs - outputs.max(1)[0].unsqueeze(1)
             prob = torch.nn.Softmax(dim=1)(outputs)
             coarse_prob = torch.matmul(prob, edge_matrix)
-            return nll_criterion(torch.log(coarse_prob + 1e-20), labels)
+            return nll_criterion(torch.log(coarse_prob), labels)
         elif partial_feedback_mode == 'two_head':
             outputs_0, _ = outputs
             outputs_0 = outputs_0 - outputs_0.max(1)[0].unsqueeze(1)
-            prob = torch.nn.Softmax(dim=1)(outputs_0)
-            return nll_criterion(torch.log(prob + 1e-20), labels)
+            log_prob = torch.nn.LogSoftmax(dim=1)(outputs_0)
+            # if nll_criterion(log_prob, labels) > 10:
+            #     import pdb; pdb.set_trace()
+            return nll_criterion(log_prob, labels)
         else:
             raise NotImplementedError()
     return coarse_loss_func
@@ -327,19 +321,20 @@ def get_ssl_loss_func(
         model,
         hparam_mode,
         tp_idx,
-        edge_matrix: torch.Tensor=None,
-        semi_supervised_alg: str=None,
-        pl_threshold: float=None,
-        hierarchical_supervision_mode: str=None,
-        select_criterion: str='acc_per_epoch'
+        edge_matrix: torch.Tensor = None,
+        semi_supervised_alg: str = None,
+        pl_threshold: float = None,
+        hierarchical_ssl: str = None,
+        select_criterion: str = 'acc_per_epoch'
     ):
     if semi_supervised_alg:
-        if semi_supervised_alg in ['Distill_Hard', 'Distill_Soft']:
+        if semi_supervised_alg in ['DistillHard', 'DistillSoft']:
             model_T = copy.deepcopy(model)
             if isinstance(model_T.fc, MultiHead):
                 assert tp_idx == 1
                 model_T.fc = getattr(model_T.fc, f"fc{tp_idx}")
-            epochs = hparam_mode['epochs']
+            epochs = hparam_mode['epochs'] #TODO
+            # epochs = 5  # TODO
 
             optimizer = make_optimizer(model_T,
                                        hparam_mode['optim'],
@@ -359,28 +354,28 @@ def get_ssl_loss_func(
                 epochs,
                 tp_idx,
             )
-            print(f"Teacher achieves {best_result['best_acc']} acc")
+            print(f"Teacher achieves {best_result['best_acc']} val acc")
             
-            if semi_supervised_alg == 'Distill_Hard':
+            if semi_supervised_alg == 'DistillHard':
                 ssl_objective = DistillHard(
-                                    model_T,
-                                    hierarchical_supervision=hierarchical_supervision,
-                                    edge_matrix=edge_matrix
-                                )
-            elif semi_supervised_alg == 'Distill_Soft':
+                    model_T,
+                    hierarchical_ssl=hierarchical_ssl,
+                    edge_matrix=edge_matrix
+                )
+            elif semi_supervised_alg == 'DistillSoft':
                 ssl_objective = DistillSoft(
-                                    model_T,
-                                    hierarchical_supervision=hierarchical_supervision,
-                                    edge_matrix=edge_matrix
-                                )
+                    model_T,
+                    hierarchical_ssl=hierarchical_ssl,
+                    edge_matrix=edge_matrix
+                )
             else:
                 raise NotImplementedError()
         elif semi_supervised_alg == 'PL':
             ssl_objective = PseudoLabel(
-                                pl_threshold,
-                                hierarchical_supervision=hierarchical_supervision,
-                                edge_matrix=edge_matrix
-                            )
+                pl_threshold,
+                hierarchical_ssl=hierarchical_ssl,
+                edge_matrix=edge_matrix
+            )
         elif semi_supervised_alg == 'FixMatch':
             raise NotImplementedError()
         else:
@@ -390,7 +385,7 @@ def get_ssl_loss_func(
     else:
         print("No SSL loss")
         return NoSSL(
-            hierarchical_supervision=hierarchical_supervision,
+            hierarchical_ssl=hierarchical_ssl,
             edge_matrix=edge_matrix
         )
     
@@ -405,19 +400,24 @@ def calc_stats(counter, pl_threshold):
     assert 'pred_labels' in counter
     assert 'gt_labels' in counter
     
+    if pl_threshold == None:
+        pl_threshold = 0.0
     count = counter['max_probs'][0].size(0)
-    unmasked = torch.BoolTensor(counter['max_probs'][0] >= pl_threshold)
-    masked = torch.BoolTensor(counter['max_probs'][0] < pl_threshold)
+    unmasked = torch.BoolTensor(counter['max_probs'][0] < pl_threshold)
+    masked = torch.BoolTensor(counter['max_probs'][0] >= pl_threshold)
     corrects_coarse = torch.BoolTensor(counter['pred_labels'][0] == counter['gt_labels'][0])
     corrects = torch.BoolTensor(counter['pred_labels'][1] == counter['gt_labels'][1])
     
+    masked_sum = float(masked.sum())
+    masked_filtered_sum = float((corrects_coarse & masked).sum())
+    
     curr_stats = {
-        'mask_rate' : float(masked.sum() / count),
-        'impurity' : float(corrects[unmasked].sum() / unmasked.sum()),
-        'coarse_acc' : float(corrects_coarse.sum() / count),
-        'coarse_acc_unmasked' : float(corrects_coarse[unmasked].sum() / unmasked.sum()),
-        'mask_rate_filtered' : float(masked[~corrects_coarse].sum(), count),
-        'impurity_filtered' : float(corrects[corrects_coarse&unmasked].sum() / (corrects_coarse&unmasked).sum()),
+        'mask_rate' : float(masked.sum()) / count,
+        'impurity' : float((~corrects)[masked].sum()) / masked_sum if masked_sum>0 else 1.,
+        'coarse_accuracy' : float(corrects_coarse.sum()) / count,
+        'coarse_accuracy_masked': float(corrects_coarse[masked].sum()) / masked_sum if masked_sum>0 else 1.,
+        'mask_rate_filtered' : float(masked[corrects_coarse].sum()) / count,
+        'impurity_filtered' : float((~corrects)[corrects_coarse&masked].sum()) / masked_filtered_sum if masked_filtered_sum>0 else 1.,
     }
     return curr_stats
 
@@ -434,11 +434,10 @@ def train_semi_supervised(
         pl_threshold: float=1.0,
         select_criterion: str='acc_per_epoch'
     ):
-    if semi_supervised_alg:
-        assert 'unlabeled' in loaders
     assert tp_idx == 1
 
     model = model.to(device)
+    model_single_head = remove_multi_head(model, tp_idx) # just a lambda func to wrap the output
     
     nll_criterion = torch.nn.NLLLoss(reduction='mean')
     
@@ -449,17 +448,17 @@ def train_semi_supervised(
         'mask_rate' : [],
         'impurity' : [],
         'coarse_accuracy' : [],
-        'coarse_accuracy_unmasked' : [],
+        'coarse_accuracy_masked' : [],
         'mask_rate_filtered' : [],
         'impurity_filtered' : []
     }
     
-    def update_stats(stats, counter):
+    def update_stats(counter):
         curr_stats = calc_stats(counter, pl_threshold)
         for k in stats:
             stats[k].append(curr_stats[k])
             
-    def best_stats(stats, best_epoch):
+    def best_stats(best_epoch):
         best_stat = {
             k : stats[k][best_epoch] for k in stats
         }
@@ -510,7 +509,7 @@ def train_semi_supervised(
                     optimizer.zero_grad()
 
                 with torch.set_grad_enabled(phase == 'train'):
-                    labeled_outputs = model(labeled_inputs)
+                    labeled_outputs = model_single_head(labeled_inputs)
                     _, labeled_preds = torch.max(labeled_outputs, 1)
 
                     labeled_loss = l_loss_func(labeled_outputs, labeled_labels)
@@ -518,18 +517,18 @@ def train_semi_supervised(
                     
                     if phase == 'train':
                         unlabeled_inputs = unlabeled_inputs.to(device)
+                        unlabeled_outputs = model(unlabeled_inputs)
                         coarse_loss = coarse_loss_func(unlabeled_outputs, unlabeled_labels[tp_idx-1].cuda())
 
                         # unlabeled_outputs = model(unlabeled_inputs)
-                        model_ssl = remove_multi_head(model, tp_idx)
                         
                         ssl_stats, ssl_loss = ssl_loss_func(
-                                                  model_ssl,
+                                                  model_single_head,
                                                   unlabeled_inputs,
                                                   unlabeled_labels
                                               )
                         counter = {
-                            k : torch.cat([counter[k], ssl_stats], dim=1)
+                            k : torch.cat([counter[k], ssl_stats[k]], dim=1)
                             for k in ssl_stats
                         }
                         loss = loss + ssl_loss + coarse_loss
@@ -548,7 +547,7 @@ def train_semi_supervised(
             avg_results[phase]['acc_per_epoch'].append(avg_acc)
             if phase == 'train':
                 scheduler.step()
-                update_stats(stats, counter)
+                update_stats(counter)
             if phase == 'val':
                 curr_value = avg_results[phase][select_criterion][-1]
                 if best_result['best_value'] == None or is_better(select_criterion, curr_value, best_result['best_value']):
@@ -558,7 +557,7 @@ def train_semi_supervised(
                     best_result['best_acc'] = avg_acc
                     best_result['best_loss'] = avg_loss
                     best_result['best_value'] = curr_value
-                    best_result['best_stat'] = best_stats(stats, epoch)
+                    best_result['best_stat'] = best_stats(epoch)
                     best_model = copy.deepcopy(model.state_dict())
                     if SAVE_BEST_MODEL:
                         best_result['best_model'] = best_model
@@ -617,11 +616,11 @@ def get_dataset(train_val_subsets,
 def get_loaders(labeled_set,
                 unlabeled_set,
                 val_set,
+                testset,
                 batch_size,
                 workers,
-                ratio_unlabeled_to_labeled):
+                ratio_unlabeled_to_labeled=None):
     loaders = {}
-    
     batch_size = int(batch_size / (1.0 + ratio_unlabeled_to_labeled))
     unlabeled_batch_size = int(batch_size * ratio_unlabeled_to_labeled)
     loaders['unlabeled'] = torch.utils.data.DataLoader(
@@ -713,7 +712,6 @@ def start_training(model,
     """Train for time period 0
     """
     assert tp_idx == 0 and model == None
-    
     model = update_model(model, model_save_dir, tp_idx, train_mode, num_of_classes)
     
     batch_size = hparams_mode['batch']
@@ -774,7 +772,7 @@ def start_training_semi_supervised(model,
                                    semi_supervised_alg: str=None,
                                    pl_threshold: float=None,
                                    partial_feedback_mode: str=None,
-                                   hierarchical_supervision_mode: str=None,
+                                   hierarchical_ssl: str=None,
                                    finetuning_mode: str=None):
     """Train for time period 0
     """
@@ -806,15 +804,20 @@ def start_training_semi_supervised(model,
     
     labeled_set, unlabeled_set, val_set = get_dataset(train_val_subsets, tp_idx)
 
+    if not partial_feedback_mode and not semi_supervised_alg:
+        print("Must specify one of partial_feedback or semi_supervised_alg. Otherwise run train.py.")
+        kill(0)
+        
     loaders = get_loaders(labeled_set,
                           unlabeled_set,
                           val_set,
+                          testset,
                           batch_size,
                           workers,
-                          ratio_unlabeled_to_labeled)
+                          ratio_unlabeled_to_labeled=ratio_unlabeled_to_labeled)
 
     edge_matrix = edge_matrix.to(device)
-    l_loss_func = get_l_loss_func(partial_feedback_mode)
+    l_loss_func = get_l_loss_func()
     coarse_loss_func = get_coarse_loss_func(edge_matrix, partial_feedback_mode)
     ssl_loss_func = get_ssl_loss_func(
         loaders,
@@ -824,7 +827,7 @@ def start_training_semi_supervised(model,
         edge_matrix=edge_matrix,
         semi_supervised_alg=semi_supervised_alg,
         pl_threshold=pl_threshold,
-        hierarchical_supervision_mode=hierarchical_supervision_mode,
+        hierarchical_ssl=hierarchical_ssl,
     )
     
     model, acc_result, best_result, avg_results, stats = train_semi_supervised(
@@ -846,7 +849,7 @@ def start_training_semi_supervised(model,
         pass
     return model, acc_result, best_result, avg_results, stats
 
-def get_edge_matrix(leaf_idx_to_all_class_idx, superclass_time=1):
+def get_edge_matrix(leaf_idx_to_all_class_idx, superclass_time=0):
     num_leaf = len(leaf_idx_to_all_class_idx.keys())
     parents = set()
     for leaf_idx in leaf_idx_to_all_class_idx:
@@ -871,7 +874,7 @@ def start_experiment(data_dir: str, # where the data are saved, and datasets + m
                      semi_supervised_alg,
                      pl_threshold,
                      partial_feedback_mode,
-                     hierarchical_supervision_mode,
+                     hierarchical_ssl,
                      finetuning_mode,
                      seed=None):
     if semi_supervised_alg:
@@ -966,7 +969,7 @@ def start_experiment(data_dir: str, # where the data are saved, and datasets + m
                                              semi_supervised_alg=semi_supervised_alg,
                                              pl_threshold=pl_threshold,
                                              partial_feedback_mode=partial_feedback_mode,
-                                             hierarchical_supervision_mode=hierarchical_supervision_mode,
+                                             hierarchical_ssl=hierarchical_ssl,
                                              finetuning_mode=finetuning_mode,
                                              tp_idx=tp_idx
                                          )
@@ -974,12 +977,12 @@ def start_experiment(data_dir: str, # where the data are saved, and datasets + m
                 exp_result_path = os.path.join(interim_exp_dir_tp_idx, "result.ckpt")
                 stats_path = os.path.join(interim_exp_dir_tp_idx, "stats.json")
                 
-                edge_matrix = get_edge_matrix(leaf_idx_to_all_class_idx, superclass_time=tp_idx)
-
+                edge_matrix = get_edge_matrix(leaf_idx_to_all_class_idx, superclass_time=tp_idx-1)
+                
                 if os.path.exists(exp_result_path):
                     print(f"{tp_idx} time period already finished for {hparams_str}")
                 else:
-                    print(f"Run {train_mode} for TP {tp_idx}")
+                    print(f"Run {train_mode_str} for TP {tp_idx}")
                     # exp_result do not exist, therefore start training
                     new_model, acc_result, best_result, avg_results, stats = start_training_semi_supervised(
                         copy.deepcopy(model),
@@ -995,7 +998,7 @@ def start_experiment(data_dir: str, # where the data are saved, and datasets + m
                         semi_supervised_alg=semi_supervised_alg,
                         pl_threshold=pl_threshold,
                         partial_feedback_mode=partial_feedback_mode,
-                        hierarchical_supervision_mode=hierarchical_supervision_mode,
+                        hierarchical_ssl=hierarchical_ssl,
                         finetuning_mode=finetuning_mode,
                     )
 
@@ -1024,6 +1027,6 @@ if __name__ == '__main__':
                      args.semi_supervised_alg,
                      args.pl_threshold,
                      args.partial_feedback_mode,
-                     args.hierarchical_supervision_mode,
+                     args.hierarchical_ssl,
                      args.finetuning_mode,
                      seed=args.seed)
