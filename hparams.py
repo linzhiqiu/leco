@@ -1,4 +1,18 @@
 HPARAMS = {
+    'cifar10_lr_03_batch_128' : {
+        'batch' : 128,
+        'workers' : 4,
+        'hparams' : {
+            'arch' : 'wide_resnet_28_2',
+            'optim' : 'sgd',
+            'weight_decay' : 5e-4,
+            'momentum' : 0.9,
+            'lr' : 0.03,
+            'total_steps' : 160000,
+            'eval_steps' : 1024,
+            'decay' : 'cosine',
+        },
+    },
     'cifar_00001_batch_128' : {
         'batch' : 128,
         'workers' : 4,
