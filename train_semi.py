@@ -4,11 +4,15 @@ import random
 import numpy as np
 import configs
 from util import load_pickle, save_obj_as_pickle, makedirs, save_as_json, load_json
-from models import load_model, make_optimizer, make_scheduler, get_fc_size, MLP, update_model
+from models import make_optimizer, make_scheduler, update_model_time_0, update_model, MultiHead
 import hparams
 import setups
-import print_utils
 import copy
+from print_utils import get_exp_str_from_semi_args,
+                        get_exp_str_from_partial_feedback_args,
+                        get_exp_str_from_train_mode,
+                        get_exp_str_from_hparam_strs
+
 
 from typing import List
 from ssl import DistillHard, DistillSoft, PseudoLabel, NoSSL
@@ -17,7 +21,7 @@ import torch
 import torchvision
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-SAVE_BEST_MODEL = False
+SAVE_BEST_MODEL_FOR_TIME = [0] # only save best model up to time 0
 
 RATIO_UNLABELED_TO_LABELED = [
     # The ratio of unlabeled data to labeled data in a batch
@@ -64,11 +68,11 @@ argparser.add_argument("--data_dir",
                         default='/ssd1/leco/',
                         help="Where the dataset and final accuracy results will be saved.")
 argparser.add_argument("--model_save_dir", 
-                        default='/data3/zhiqiul/self_supervised_models/resnet18/',
+                        default='/data3/zhiqiul/self_supervised_models/wide_resnet_28_2/',
                         help="Where the self-supervised pre-trained models were saved.")
 argparser.add_argument("--setup_mode",
                         type=str,
-                        default='cifar10_buffer_2000_500',
+                        default='cifar10_weakaug_buffer_2000_500',
                         choices=setups.SETUPS.keys(),
                         help="The dataset setup mode")  
 argparser.add_argument("--ratio_unlabeled_to_labeled",
@@ -120,34 +124,11 @@ argparser.add_argument("--hparam_candidate",
 argparser.add_argument('--seed', default=None, type=int,
                        help='seed for initializing training. ')
 
-def get_exp_str_from_semi_args(ratio_unlabeled_to_labeled: float=1.,
-                               semi_supervised_alg: str=None,
-                               pl_threshold: float=None,
-                               hierarchical_ssl: str=None,
-                               finetuning_mode: str=None):
-    if semi_supervised_alg:
-        name = f"{semi_supervised_alg}_R_{ratio_unlabeled_to_labeled}"
-        if semi_supervised_alg in ['PL', "FixMatch"]:
-            name += f"_T_{pl_threshold}"
-        elif semi_supervised_alg in ['DistillHard', 'DistillSoft']:
-            pass
-        else:
-            raise NotImplementedError()
-
-        if hierarchical_ssl:
-            name += f"_H_{hierarchical_ssl}"
-        
-        if finetuning_mode:
-            name += f"_F_{finetuning_mode}"
-        return name
-    else:
-        return ""
-
-def get_exp_str_from_partial_feedback_args(partial_feedback_mode: str=None):
-    if partial_feedback_mode:
-        return partial_feedback_mode
-    else:
-        return ""
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
 
 def get_semi_supervised_dir(setup_dir,
                             train_mode: configs.TrainMode=None,
@@ -162,7 +143,7 @@ def get_semi_supervised_dir(setup_dir,
     assert tp_idx == 1
     assert len(hparam_list) == tp_idx+1
     dir_name = os.path.join(setup_dir,
-                            print_utils.get_exp_str_from_train_mode(train_mode, tp_idx=tp_idx),
+                            get_exp_str_from_train_mode(train_mode, tp_idx=tp_idx),
                             get_exp_str_from_partial_feedback_args(partial_feedback_mode),
                             get_exp_str_from_semi_args(
                                 ratio_unlabeled_to_labeled=ratio_unlabeled_to_labeled,
@@ -171,7 +152,7 @@ def get_semi_supervised_dir(setup_dir,
                                 hierarchical_ssl=hierarchical_ssl,
                                 finetuning_mode=finetuning_mode
                             ),
-                            print_utils.get_exp_str_from_hparam_strs(hparam_list, tp_idx=tp_idx))
+                            get_exp_str_from_hparam_strs(hparam_list, tp_idx=tp_idx))
     return dir_name
 
 def is_better(select_criterion, curr_value, best_value):
@@ -181,17 +162,6 @@ def is_better(select_criterion, curr_value, best_value):
         return curr_value < best_value
     else:
         return curr_value > best_value
-
-class MultiHead(torch.nn.Module):
-    def __init__(self, list_of_fcs):
-        super().__init__()
-        self.list_of_fcs = list_of_fcs
-        for idx, fc in enumerate(list_of_fcs):
-            setattr(self, f"fc{idx}", fc)
-    
-    def forward(self, x):
-        return [getattr(self, f"fc{idx}")(x) for idx in range(len(self.list_of_fcs))]
-    
 
 def train(loaders,
           model,
@@ -272,7 +242,7 @@ def train(loaders,
                     best_result['best_loss'] = avg_loss
                     best_result['best_value'] = curr_value
                     best_model = copy.deepcopy(model.state_dict())
-                    if SAVE_BEST_MODEL:
+                    if tp_idx in SAVE_BEST_MODEL_FOR_TIME:
                         best_result['best_model'] = best_model
             print(
                 f"Epoch {epoch}: Average {phase} Loss {avg_loss:.4f}, Acc {avg_acc:.2%}")
@@ -559,7 +529,7 @@ def train_semi_supervised(
                     best_result['best_value'] = curr_value
                     best_result['best_stat'] = best_stats(epoch)
                     best_model = copy.deepcopy(model.state_dict())
-                    if SAVE_BEST_MODEL:
+                    if tp_idx in SAVE_BEST_MODEL_FOR_TIME:
                         best_result['best_model'] = best_model
             print(
                 f"Epoch {epoch}: Average {phase} Loss {avg_loss:.4f}, Acc {avg_acc:.2%}")
@@ -651,58 +621,7 @@ def get_loaders(labeled_set,
                        )
     return loaders
 
-def update_model_for_semi_supervised(model,
-                                     model_save_dir,
-                                     tp_idx,
-                                     train_mode,
-                                     num_of_classes,
-                                     partial_feedback_mode):
-    extractor_mode = train_mode.tp_configs[tp_idx].extractor_mode
-    classifier_mode = train_mode.tp_configs[tp_idx].classifier_mode
-    num_class = num_of_classes[tp_idx]
-    
-    assert tp_idx == 1
-    if classifier_mode == 'mlp_replace_last':
-        prev_fc = copy.deepcopy(model.fc)
-    old_fc = copy.deepcopy(model.fc)
-    
-    fc_size = get_fc_size(train_mode.pretrained_mode)
-    if extractor_mode in ['scratch', 'finetune_pt', 'freeze_pt', 'freeze_random']:
-        model = load_model(model_save_dir, train_mode.pretrained_mode)
-    elif extractor_mode in ['finetune_prev', 'freeze_prev']:
-        print("resume from previous feature extractor checkpoint")
-        assert model != None and tp_idx > 0
-
-    if classifier_mode == 'linear':
-        new_fc = torch.nn.Linear(fc_size, num_class)
-    elif classifier_mode == 'mlp':
-        new_fc = MLP(fc_size, 1024, num_class)
-    elif classifier_mode == 'mlp_replace_last':
-        prev_fc.fc2 = torch.nn.Linear(prev_fc.hidden_size, num_class)
-        new_fc = prev_fc
-    else:
-        raise NotImplementedError()
-    
-    if partial_feedback_mode == 'two_head':
-        model.fc = MultiHead([old_fc, new_fc])
-    elif partial_feedback_mode in [None, 'single_head']:
-        model.fc = new_fc
-    
-    if extractor_mode in ['scratch', 'finetune_pt', 'finetune_prev']:
-        for p in model.parameters():
-            p.requires_grad = True
-    elif extractor_mode in ['freeze_pt', 'freeze_prev', 'freeze_random']:
-        for p in model.parameters():
-            p.requires_grad = False
-        for p in model.fc.parameters():
-            p.requires_grad = True
-    else:
-        raise NotImplementedError()
-
-    return model
-
-def start_training(model,
-                   model_save_dir,
+def start_training(model_save_dir,
                    tp_idx,
                    train_mode,
                    hparams_mode,
@@ -711,8 +630,12 @@ def start_training(model,
                    testset):
     """Train for time period 0
     """
-    assert tp_idx == 0 and model == None
-    model = update_model(model, model_save_dir, tp_idx, train_mode, num_of_classes)
+    assert tp_idx == 0
+    model = update_model_time_0(
+        model_save_dir,
+        train_mode,
+        num_of_classes[0]
+    )
     
     batch_size = hparams_mode['batch']
     workers = hparams_mode['workers']
@@ -778,12 +701,11 @@ def start_training_semi_supervised(model,
     """
     assert tp_idx > 0
     
-    model = update_model_for_semi_supervised(
+    model = update_model(
                 model,
                 model_save_dir,
-                tp_idx,
                 train_mode, 
-                num_of_classes,
+                num_of_classes[tp_idx],
                 partial_feedback_mode
             )
     
@@ -885,9 +807,7 @@ def start_experiment(data_dir: str, # where the data are saved, and datasets + m
         print("Not using a random seed")
     else:
         print(f"Using random seed {seed}")
-        random.seed(seed)
-        torch.manual_seed(seed)
-        np.random.seed(seed)
+        set_seed(seed)
     
     setup_dir = os.path.join(data_dir, setup_mode_str, seed_str)
     makedirs(setup_dir)
@@ -902,20 +822,18 @@ def start_experiment(data_dir: str, # where the data are saved, and datasets + m
 
     train_val_subsets, testset, all_tp_info, leaf_idx_to_all_class_idx = dataset
 
-    # train_mode_str_check = print_utils.get_exp_str_from_train_mode(train_mode, tp_idx=1)
+    # train_mode_str_check = get_exp_str_from_train_mode(train_mode, tp_idx=1)
     # assert train_mode_str_check == train_mode_str
     train_mode = configs.TRAIN_MODES[train_mode_str]
     print("Only support two time periods for now..")
-    model = None
     for tp_idx in [0,1]:
         if tp_idx == 0:
             if len(hparam_strs) == 0:
                 for hparams_str in hparams.HPARAM_CANDIDATES[hparam_candidate]:
                     hparams_mode = hparams.HPARAMS[hparams_str]
                     interim_exp_dir_tp_idx = os.path.join(setup_dir,
-                                                          print_utils.get_exp_str_from_train_mode(train_mode, tp_idx=tp_idx),
-                                                          print_utils.get_exp_str_from_multi_head(multi_head_mode, tp_idx=tp_idx),
-                                                          print_utils.get_exp_str_from_hparam_strs(hparam_strs+[hparams_str], tp_idx=tp_idx))
+                                                          get_exp_str_from_train_mode(train_mode, tp_idx=tp_idx),
+                                                          get_exp_str_from_hparam_strs([hparams_str], tp_idx=tp_idx))
                     makedirs(interim_exp_dir_tp_idx)
                     exp_result_path = os.path.join(interim_exp_dir_tp_idx, "result.ckpt")
 
@@ -925,7 +843,6 @@ def start_experiment(data_dir: str, # where the data are saved, and datasets + m
                         print(f"Run {train_mode} for TP {tp_idx}")
                         # exp_result do not exist, therefore start training
                         new_model, acc_result, best_result, avg_results = start_training(
-                            copy.deepcopy(model),
                             model_save_dir,
                             tp_idx, # must be tp_idx == 0
                             train_mode,
@@ -945,8 +862,8 @@ def start_experiment(data_dir: str, # where the data are saved, and datasets + m
                 break
             else:
                 interim_exp_dir_tp_idx = os.path.join(setup_dir,
-                                                      print_utils.get_exp_str_from_train_mode(train_mode, tp_idx=tp_idx),
-                                                      print_utils.get_exp_str_from_hparam_strs(hparam_strs, tp_idx=tp_idx))
+                                                      get_exp_str_from_train_mode(train_mode, tp_idx=tp_idx),
+                                                      get_exp_str_from_hparam_strs(hparam_strs, tp_idx=tp_idx))
                 exp_result_path = os.path.join(interim_exp_dir_tp_idx, "result.ckpt")
                 # Load the model
                 if not os.path.exists(exp_result_path):
