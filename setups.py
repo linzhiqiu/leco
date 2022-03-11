@@ -14,47 +14,42 @@ class Setup():
         self.replace = replace # whether to sample with replacement per time period
 
 SETUPS = {
-    'cifar10_buffer_2000_500' : Setup(
-        'CIFAR10',
-        tp_buffers=[(2000, 500), (2000, 500)], # each element is a tuple of (train_set_size:int, val_set_size:int)
-        replace=False
-    ),
-    'cifar10_weakaug_train_2000_val_500_labelnew' : Setup(
+    'cifar10_weakaug_train_2000_val_500' : Setup( #TODO
         'CIFAR10WeakAug',
         tp_buffers=[(2000, 500), (2000, 500)], # each element is a tuple of (train_set_size:int, val_set_size:int)
-        mode=''
+        replace=False
     ),
     'cifar10_strongaug_train_2000_val_500' : Setup(
         'CIFAR10StrongAug',
         tp_buffers=[(2000, 500), (2000, 500)], # each element is a tuple of (train_set_size:int, val_set_size:int)
         replace=False
     ),
-    'semi_inat_buffer_1000_380' : Setup(
-        'SemiInat2021',
-        tp_buffers=[
-            (1000, 380),
-            (1000, 380),
-            (1000, 380),
-            (1000, 380),
-            (1000, 380),
-            (1000, 380),
-            (1000, 380),
-        ],
-        replace=False
-    ),
-    'semi_inat_buffer_7721_2000_replace' : Setup(
-        'SemiInat2021',
-        tp_buffers=[
-            (7721, 2000),
-            (7721, 2000),
-            (7721, 2000),
-            (7721, 2000),
-            (7721, 2000),
-            (7721, 2000),
-            (7721, 2000),
-        ],
-        replace=True
-    ),
+    # 'semi_inat_buffer_1000_380' : Setup(
+    #     'SemiInat2021',
+    #     tp_buffers=[
+    #         (1000, 380),
+    #         (1000, 380),
+    #         (1000, 380),
+    #         (1000, 380),
+    #         (1000, 380),
+    #         (1000, 380),
+    #         (1000, 380),
+    #     ],
+    #     replace=False
+    # ),
+    # 'semi_inat_buffer_7721_2000_replace' : Setup(
+    #     'SemiInat2021',
+    #     tp_buffers=[
+    #         (7721, 2000),
+    #         (7721, 2000),
+    #         (7721, 2000),
+    #         (7721, 2000),
+    #         (7721, 2000),
+    #         (7721, 2000),
+    #         (7721, 2000),
+    #     ],
+    #     replace=True
+    # ),
 }
 
 class HierarchyDataset(Dataset):

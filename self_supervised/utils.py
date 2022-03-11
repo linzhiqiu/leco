@@ -13,6 +13,9 @@ from torchvision.datasets import STL10
 from torchvision.datasets import ImageFolder
 
 import ws_resnet
+import sys
+sys.path.append("./")
+import model_zoo
 
 ###################
 # Transform utils #
@@ -335,6 +338,11 @@ def get_encoder(name: str, **kwargs) -> torch.nn.Module:
     :return:
     """
 
+    if name == 'wideres_28_2':
+        model_creator = model_zoo.wideres_28_2
+        model = model_creator(**kwargs)
+        return model
+    
     if name in ws_resnet.__dict__:
         model_creator = ws_resnet.__dict__.get(name)
     elif name in torchvision.models.__dict__:
