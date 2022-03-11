@@ -13,8 +13,9 @@ from torchvision.datasets import STL10
 from torchvision.datasets import ImageFolder
 
 import ws_resnet
+import os
 import sys
-sys.path.append("./")
+sys.path.append(os.path.abspath("./"))
 import model_zoo
 
 ###################

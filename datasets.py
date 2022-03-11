@@ -7,7 +7,7 @@ import torchvision
 import torchvision.transforms as transforms
 import random
 import os
-from .randaugment import RandAugmentMC
+from randaugment import RandAugmentMC
 # annotation_file = ./semi_inat/annotation_v2.json
 
 cifar10_mean = (0.4914, 0.4822, 0.4465)
@@ -17,9 +17,9 @@ def get_cifar_transform_train_strong_aug():
     transform_train = transforms.Compose([
         transforms.RandomHorizontalFlip(),
         transforms.RandomCrop(size=32,
-                                padding=int(32*0.125),
-                                padding_mode='reflect'),
-        RandAugmentMC(n=2, m=10)],
+                              padding=int(32*0.125),
+                              padding_mode='reflect'),
+        RandAugmentMC(n=2, m=10),
         transforms.ToTensor(),
         transforms.Normalize(mean=mean, std=std)]
     )

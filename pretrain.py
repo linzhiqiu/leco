@@ -3,13 +3,14 @@ import pytorch_lightning as pl
 from self_supervised.moco import MoCoMethod 
 from self_supervised.moco import MoCoMethodParams
 
+import torch
 import argparse
 import configs
 import model_zoo
 
 argparser = argparse.ArgumentParser()
 argparser.add_argument("--data_dir", 
-                        default='/ssd1/leco/',
+                        default='/scratch/leco/',
                         help="Where the dataset will be saved.")
 argparser.add_argument("--model_save_dir", 
                         default='/data3/zhiqiul/self_supervised_models/wideres_28_2/',
@@ -75,22 +76,22 @@ def pretrain(data_dir,
         return
     
     # TODO: Fix the self_supervised library
-    if args.pretrain == 'moco_v2_stl_10':
+    if args.pretrain == 'moco_v2_stl10':
         params = MoCoMethodParams(
             encoder_arch=arch, 
             embedding_dim=embedding_dim,
-            dataset_name='stl_10',
+            dataset_name='stl10',
             batch_size=256,
             transform_crop_size=96,
             lr=0.5,
             K=65536,
         )
         model = MoCoMethod(params)
-    elif args.pretrain == 'byol_pl_stl_10':
+    elif args.pretrain == 'byol_stl10':
         params = MoCoMethodParams(
             encoder_arch=arch,
             embedding_dim=embedding_dim,
-            dataset_name='stl_10',
+            dataset_name='stl10',
             batch_size=256,
             transform_crop_size=96,
             lr=0.5,
@@ -106,11 +107,11 @@ def pretrain(data_dir,
             loss_constant_factor = 2
         )
         model = MoCoMethod(params)
-    elif args.model == 'simclr_stl_10':
+    elif args.pretrain == 'simclr_stl10':
         hparams = MoCoMethodParams(
             encoder_arch=arch,
             embedding_dim=embedding_dim,
-            dataset_name='stl_10',
+            dataset_name='stl10',
             batch_size=256,
             transform_crop_size=96,
             lr=0.5,
@@ -121,6 +122,8 @@ def pretrain(data_dir,
             use_both_augmentations_as_queries=True,
         )
         model = MoCoMethod(hparams)
+    else:
+        raise NotImplementedError()
 
     trainer = pl.Trainer(gpus=args.gpus, max_epochs=320)    
     trainer.fit(model) 
@@ -141,7 +144,7 @@ def load_from_checkpoint(model_save_dir,
                                           pretrain)
     if pretrain == 'scratch':
         return torch.load(checkpoint_path)
-    elif pretrain in ['moco_v2_stl_10', 'byol_stl_10', 'simclr_stl_10']:
+    elif pretrain in ['moco_v2_stl10', 'byol_stl10', 'simclr_stl10']:
         model = MoCoMethod.load_from_checkpoint(checkpoint_path)
         model = model.__dict__['_modules']['model']
         return model

@@ -4,6 +4,7 @@ import torchvision
 from torch.optim.lr_scheduler import LambdaLR
 from self_supervised.moco import MoCoMethod
 import copy
+import math
 from pretrain import get_fc_size, load_from_checkpoint
 
 def update_model_time_0(model_save_dir,

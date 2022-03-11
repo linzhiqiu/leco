@@ -14,7 +14,7 @@ class Setup():
         self.replace = replace # whether to sample with replacement per time period
 
 SETUPS = {
-    'cifar10_weakaug_train_2000_val_500' : Setup( #TODO
+    'cifar10_weakaug_train_2000_val_500' : Setup(
         'CIFAR10WeakAug',
         tp_buffers=[(2000, 500), (2000, 500)], # each element is a tuple of (train_set_size:int, val_set_size:int)
         replace=False
@@ -95,20 +95,7 @@ def generate_dataset(data_dir, setup : Setup, annotation_file=''):
     print(f"Length of trainset is {len(trainset)}")
     
     train_val_subsets = []
-    if setup.replace == 'same_image':
-        print("Use same image!")
-        len_of_trainset = len(trainset)
-        indices_trainset = list(range(len_of_trainset))
-        random.shuffle(indices_trainset)
-        tp_buffer_train_count = None
-        for _, (tp_buffer_train, tp_buffer_val) in enumerate(setup.tp_buffers):
-            if tp_buffer_train_count == None:
-                tp_buffer_train_count = tp_buffer_train
-            else:
-                assert tp_buffer_train_count == tp_buffer_train
-            indices_tp_train, indices_tp_val = indices_trainset[:tp_buffer_train], indices_trainset[tp_buffer_train:tp_buffer_train+tp_buffer_val]
-            train_val_subsets.append((torch.utils.data.Subset(trainset, indices_tp_train), torch.utils.data.Subset(trainset, indices_tp_val)) )
-    elif setup.replace:
+    if setup.replace:
     # if setup.replace == True:
         print('Sample with replacement!')
         len_of_trainset = len(trainset)
