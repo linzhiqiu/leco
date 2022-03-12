@@ -28,6 +28,12 @@ def get_exp_str_from_cl_mode(cl_mode):
     else:
         raise NotImplementedError()
 
+def get_exp_str_from_ema_decay(ema_decay):
+    if ema_decay:
+        return f"ema_decay_{ema_decay}"
+    else:
+        return ""
+
 def get_exp_str_from_semi_args(ratio_unlabeled_to_labeled: float=1.,
                                semi_supervised_alg: str=None,
                                pl_threshold: float=None,

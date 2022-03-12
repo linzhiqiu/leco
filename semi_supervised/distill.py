@@ -49,7 +49,7 @@ class DistillHard(SSLObjective):
         self.model_T = model_T
         self.model_T.eval()
         
-    def calc_labels_T(self, model, inputs):
+    def calc_labels_T(self, inputs):
         with torch.no_grad():
             outputs_t = self.model_T(inputs)
             _, labels_T = outputs_t.max(1)
@@ -65,7 +65,7 @@ class DistillHard(SSLObjective):
         filter_mask = self.calc_filter_mask(probs, labels)
 
         conditioned_log_probs = self.condition_outputs_for_log_probs(outputs, labels)
-        labels_T = self.calc_labels_T(model, inputs)
+        labels_T = self.calc_labels_T(inputs)
         ce_loss = torch.nn.NLLLoss(reduction='none')(
             conditioned_log_probs,
             labels_T

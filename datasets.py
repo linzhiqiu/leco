@@ -21,7 +21,7 @@ def get_cifar_transform_train_strong_aug():
                               padding_mode='reflect'),
         RandAugmentMC(n=2, m=10),
         transforms.ToTensor(),
-        transforms.Normalize(mean=mean, std=std)]
+        transforms.Normalize(mean=cifar10_mean, std=cifar10_std)]
     )
     return transform_train
 
@@ -48,7 +48,11 @@ class LecoDataset():
         self.data_dir = data_dir
 
     def get_dataset(self):
+        ### Must make sure that the trainset, testset returned by this func has a .transform field
         raise NotImplementedError()
+    
+    def get_weak_and_strong_transform(self):
+        raise NotImplementedError() # For Fixmatch
 
     def get_class_hierarchy(self):
         leaf_idx_to_all_class_idx = None
@@ -61,6 +65,9 @@ class CIFAR10(LecoDataset):
     
     def get_transform_train(self):
         raise NotImplementedError() #TODO
+
+    def get_weak_and_strong_transform(self):
+        return get_cifar_transform_train_weak_aug(), get_cifar_transform_train_strong_aug()
 
     def get_dataset(self):
         transform_train = self.get_transform_train()

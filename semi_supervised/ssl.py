@@ -45,6 +45,12 @@ class SSLObjective(nn.Module):
         else:
             raise NotImplementedError()
     
+    def calc_labels(self, model, inputs):
+        with torch.no_grad():
+            outputs = self.calc_outputs(model, inputs)
+            _, labels = outputs.max(1)
+        return labels
+    
     def calc_outputs(self, model, inputs):
         # Calculate output in a numerically stable way
         outputs = model(inputs)

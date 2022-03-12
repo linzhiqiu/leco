@@ -52,10 +52,27 @@ SETUPS = {
     # ),
 }
 
+class TransformWeakStrong(object):
+    def __init__(self, weak, strong):
+        self.weak = weak
+        self.strong = strong
+
+    def __call__(self, x):
+        weak = self.weak(x)
+        strong = self.strong(x)
+        return weak, strong
+
 class HierarchyDataset(Dataset):
-    def __init__(self, dataset, leaf_idx_to_all_class_idx):
+    def __init__(self,
+                 dataset,
+                 leaf_idx_to_all_class_idx,
+                 weak_transform,
+                 strong_transform):
         self.dataset = dataset
         self.leaf_idx_to_all_class_idx = leaf_idx_to_all_class_idx
+        self.weak_transform = weak_transform
+        self.strong_transform = strong_transform
+        self.weak_strong_transform = TransformWeakStrong(weak_transform, strong_transform)
     
     def __len__(self):
         return len(self.dataset)
@@ -64,6 +81,21 @@ class HierarchyDataset(Dataset):
         sample, leaf_idx = self.dataset[index]
         all_class_idx = self.leaf_idx_to_all_class_idx[leaf_idx]
         return sample, all_class_idx
+
+class ConcatHierarchyDataset(Dataset):
+    def __init__(self,
+                 hierarchy_dataset_list):
+        self.dataset = torch.utils.data.ConcatDataset(hierarchy_dataset_list)
+        self.leaf_idx_to_all_class_idx = hierarchy_dataset_list[0].leaf_idx_to_all_class_idx
+        self.weak_transform = hierarchy_dataset_list[0].weak_transform
+        self.strong_transform = hierarchy_dataset_list[0].strong_transform
+        self.weak_strong_transform = hierarchy_dataset_list[0].weak_strong_transform
+    
+    def __len__(self):
+        return len(self.dataset)
+    
+    def __getitem__(self,index):
+        return self.dataset[index]
 
 def get_superclass_to_subclass(leaf_idx_to_all_class_idx):
     # superclass_to_subclass[sub_class_time][super_class_time][super_class_idx]
@@ -90,8 +122,10 @@ def generate_dataset(data_dir, setup : Setup, annotation_file=''):
     trainset, testset = dataset.get_dataset()
 
     all_tp_info, leaf_idx_to_all_class_idx = dataset.get_class_hierarchy()
-    trainset = HierarchyDataset(trainset, leaf_idx_to_all_class_idx)
-    testset = HierarchyDataset(testset, leaf_idx_to_all_class_idx)
+    weak_transform, strong_transform = dataset.get_weak_and_strong_transform()
+    
+    trainset = HierarchyDataset(trainset, leaf_idx_to_all_class_idx, weak_transform, strong_transform)
+    testset = HierarchyDataset(testset, leaf_idx_to_all_class_idx, weak_transform, strong_transform)
     print(f"Length of trainset is {len(trainset)}")
     
     train_val_subsets = []

@@ -3,9 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from .ssl import SSLObjective
 
-class PseudoLabel(SSLObjective):
+class Fixmatch(SSLObjective):
     def __init__(self, pl_threshold, hierarchical_ssl=None, edge_matrix=None):
-        super(PseudoLabel, self).__init__(
+        super(Fixmatch, self).__init__(
             hierarchical_ssl=hierarchical_ssl,
             edge_matrix=edge_matrix
         )
@@ -17,25 +17,27 @@ class PseudoLabel(SSLObjective):
         return max_probs >= self.pl_threshold
     
     def forward(self, model, inputs, labels):
-        labels = self.put_on_device(labels, inputs.device)
+        inputs_w, inputs_s = inputs
         
-        outputs = self.calc_outputs(model, inputs)
-        probs = F.softmax(outputs, dim=1)
-        ssl_stats = self.calc_ssl_stats(probs, labels)
+        labels = self.put_on_device(labels, inputs_w.device)
         
-        filter_mask = self.calc_filter_mask(probs, labels)
+        outputs_s = self.calc_outputs(model, inputs_s)
+        probs_s = F.softmax(outputs_s, dim=1)
         
-        conditioned_probs = self.condition_outputs_for_probs(outputs, labels)
+        ssl_stats = self.calc_ssl_stats(probs_s, labels)
+        
+        filter_mask = self.calc_filter_mask(probs_s, labels)
+        
+        conditioned_probs = self.condition_outputs_for_probs(outputs_s, labels)
         pl_mask = self.calc_pl_mask(conditioned_probs)
         final_mask = pl_mask & filter_mask
         
-        conditioned_log_probs = self.condition_outputs_for_log_probs(outputs, labels)
+        conditioned_log_probs = self.condition_outputs_for_log_probs(outputs_s, labels)
         
         pl_loss = torch.nn.NLLLoss(reduction='none')(
             # torch.log(conditioned_probs) + 1e-20,
             conditioned_log_probs,
-            self.calc_labels(model, inputs)
+            self.calc_labels(model, inputs_w)
         )
-        
         pl_loss = final_mask * pl_loss
         return ssl_stats, pl_loss.mean()
