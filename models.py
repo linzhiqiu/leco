@@ -69,7 +69,7 @@ def update_model(model,
     
     old_fc = copy.deepcopy(model.fc)
     
-    fc_size = get_fc_size(train_mode.pretrain)
+    fc_size = get_fc_size(train_mode.arch)
     if extractor_mode in ['finetune_pt', 'freeze_pt']:
         model = load_from_checkpoint(
             model_save_dir,

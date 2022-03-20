@@ -64,22 +64,22 @@ CIFAR_MODES = {
         'scratch',
         [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'linear'),]
     ),
-    "wideres_28_2_moco_v2_0_finetune_pt_linear_1_finetune_pt_linear" : TrainMode(
+    "wideres_28_2_moco_v2_stl10_0_finetune_pt_linear_1_finetune_pt_linear" : TrainMode(
         "wideres_28_2",
         'moco_v2_stl10',
         [Phase('finetune_pt', 'linear'), Phase('finetune_pt', 'linear'),]
     ),
-    "wideres_28_2_moco_v2_0_finetune_pt_linear_1_finetune_prev_linear" : TrainMode(
+    "wideres_28_2_moco_v2_stl10_0_finetune_pt_linear_1_finetune_prev_linear" : TrainMode(
         "wideres_28_2",
         'moco_v2_stl10',
         [Phase('finetune_pt', 'linear'),Phase('finetune_prev', 'linear'),]
     ),
-    "wideres_28_2_moco_v2_0_finetune_pt_linear_1_freeze_pt_linear" : TrainMode(
+    "wideres_28_2_moco_v2_stl10_0_finetune_pt_linear_1_freeze_pt_linear" : TrainMode(
         "wideres_28_2",
         'moco_v2_stl10',
         [Phase('finetune_pt', 'linear'), Phase('freeze_pt', 'linear'),]
     ),
-    "wideres_28_2_moco_v2_0_finetune_pt_linear_1_freeze_prev_linear" : TrainMode(
+    "wideres_28_2_moco_v2_stl10_0_finetune_pt_linear_1_freeze_prev_linear" : TrainMode(
         "wideres_28_2",
         'moco_v2_stl10',
         [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'linear'),]

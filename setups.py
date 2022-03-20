@@ -6,6 +6,7 @@ import torchvision.transforms as transforms
 import random
 import os
 import datasets
+from copy import deepcopy
 
 class Setup():
     def __init__(self, dataset_name, tp_buffers=[2000, 2000], replace=False):
@@ -14,11 +15,11 @@ class Setup():
         self.replace = replace # whether to sample with replacement per time period
 
 SETUPS = {
-    'cifar10_weakaug_train_2000_val_500' : Setup(
-        'CIFAR10WeakAug',
-        tp_buffers=[(2000, 500), (2000, 500)], # each element is a tuple of (train_set_size:int, val_set_size:int)
-        replace=False
-    ),
+    # 'cifar10_weakaug_train_2000_val_500' : Setup(
+    #     'CIFAR10WeakAug',
+    #     tp_buffers=[(2000, 500), (2000, 500)], # each element is a tuple of (train_set_size:int, val_set_size:int)
+    #     replace=False
+    # ),
     'cifar10_strongaug_train_2000_val_500' : Setup(
         'CIFAR10StrongAug',
         tp_buffers=[(2000, 500), (2000, 500)], # each element is a tuple of (train_set_size:int, val_set_size:int)
@@ -67,12 +68,14 @@ class HierarchyDataset(Dataset):
                  dataset,
                  leaf_idx_to_all_class_idx,
                  weak_transform,
-                 strong_transform):
+                 strong_transform,
+                 test_transform):
         self.dataset = dataset
         self.leaf_idx_to_all_class_idx = leaf_idx_to_all_class_idx
         self.weak_transform = weak_transform
         self.strong_transform = strong_transform
         self.weak_strong_transform = TransformWeakStrong(weak_transform, strong_transform)
+        self.test_transform = test_transform
     
     def __len__(self):
         return len(self.dataset)
@@ -81,21 +84,63 @@ class HierarchyDataset(Dataset):
         sample, leaf_idx = self.dataset[index]
         all_class_idx = self.leaf_idx_to_all_class_idx[leaf_idx]
         return sample, all_class_idx
+    
+    def update_transform(self, transform):
+        self.dataset.transform = transform
+    
+    def set_test_transform(self):
+        self.dataset.transform = self.test_transform
 
 class ConcatHierarchyDataset(Dataset):
     def __init__(self,
                  hierarchy_dataset_list):
-        self.dataset = torch.utils.data.ConcatDataset(hierarchy_dataset_list)
+        self.concat_set = torch.utils.data.ConcatDataset(hierarchy_dataset_list)
+        self.hierarchy_dataset_list = hierarchy_dataset_list
         self.leaf_idx_to_all_class_idx = hierarchy_dataset_list[0].leaf_idx_to_all_class_idx
         self.weak_transform = hierarchy_dataset_list[0].weak_transform
         self.strong_transform = hierarchy_dataset_list[0].strong_transform
         self.weak_strong_transform = hierarchy_dataset_list[0].weak_strong_transform
+        self.test_transform = hierarchy_dataset_list[0].test_transform
     
     def __len__(self):
-        return len(self.dataset)
+        return len(self.concat_set)
     
     def __getitem__(self,index):
-        return self.dataset[index]
+        return self.concat_set[index]
+
+    def update_transform(self, transform):
+        for hierarchy_dataset in self.hierarchy_dataset_list:
+            self.hierarchy_dataset.dataset.transform = transform
+    
+    def set_test_transform(self):
+        for hierarchy_dataset in self.hierarchy_dataset_list:
+            self.hierarchy_dataset.dataset.transform = self.test_transform
+
+class SubsetHierarchyDataset(Dataset):
+    def __init__(self,
+                 hierarchy_dataset,
+                 indices):
+        assert isinstance(hierarchy_dataset, HierarchyDataset)
+        self.hierarchy_dataset = hierarchy_dataset
+        self.subset = torch.utils.data.Subset(hierarchy_dataset, indices)
+        # Below to keep the same as hierarchy_dataset
+        self.leaf_idx_to_all_class_idx = hierarchy_dataset.leaf_idx_to_all_class_idx
+        self.weak_transform = hierarchy_dataset.weak_transform
+        self.strong_transform = hierarchy_dataset.strong_transform
+        self.weak_strong_transform = hierarchy_dataset.weak_strong_transform
+        self.test_transform = hierarchy_dataset.test_transform
+    
+    def __len__(self):
+        return len(self.subset)
+    
+    def __getitem__(self,index):
+        return self.subset[index]
+    
+    def update_transform(self, transform):
+        self.hierarchy_dataset.dataset.transform = transform
+    
+    def set_test_transform(self):
+        self.hierarchy_dataset.dataset.transform = self.test_transform
 
 def get_superclass_to_subclass(leaf_idx_to_all_class_idx):
     # superclass_to_subclass[sub_class_time][super_class_time][super_class_idx]
@@ -123,9 +168,10 @@ def generate_dataset(data_dir, setup : Setup, annotation_file=''):
 
     all_tp_info, leaf_idx_to_all_class_idx = dataset.get_class_hierarchy()
     weak_transform, strong_transform = dataset.get_weak_and_strong_transform()
+    test_transform = dataset.get_transform_test()
     
-    trainset = HierarchyDataset(trainset, leaf_idx_to_all_class_idx, weak_transform, strong_transform)
-    testset = HierarchyDataset(testset, leaf_idx_to_all_class_idx, weak_transform, strong_transform)
+    trainset = HierarchyDataset(trainset, leaf_idx_to_all_class_idx, weak_transform, strong_transform, test_transform)
+    testset = HierarchyDataset(testset, leaf_idx_to_all_class_idx, weak_transform, strong_transform, test_transform)
     print(f"Length of trainset is {len(trainset)}")
     
     train_val_subsets = []
@@ -138,7 +184,10 @@ def generate_dataset(data_dir, setup : Setup, annotation_file=''):
             indices_trainset = list(range(len_of_trainset))
             random.shuffle(indices_trainset)
             indices_tp_train, indices_tp_val = indices_trainset[:tp_buffer_train], indices_trainset[tp_buffer_train:tp_buffer_train+tp_buffer_val]
-            train_val_subsets.append((torch.utils.data.Subset(trainset, indices_tp_train), torch.utils.data.Subset(trainset, indices_tp_val)) )
+            train_subset = SubsetHierarchyDataset(deepcopy(trainset), indices_tp_train)
+            val_subset = SubsetHierarchyDataset(deepcopy(trainset), indices_tp_val)
+            val_subset.set_test_transform()
+            train_val_subsets.append((train_subset, val_subset))
     else:
         len_of_trainset = len(trainset)
         indices_trainset = list(range(len_of_trainset))
@@ -147,7 +196,10 @@ def generate_dataset(data_dir, setup : Setup, annotation_file=''):
         for _, (tp_buffer_train, tp_buffer_val) in enumerate(setup.tp_buffers):
             indices_tp_train, indices_tp_val = indices_trainset[:tp_buffer_train], indices_trainset[tp_buffer_train:tp_buffer_train+tp_buffer_val]
             indices_trainset = indices_trainset[tp_buffer_train+tp_buffer_val:]
-            train_val_subsets.append((torch.utils.data.Subset(trainset, indices_tp_train), torch.utils.data.Subset(trainset, indices_tp_val)) )
+            train_subset = SubsetHierarchyDataset(deepcopy(trainset), indices_tp_train)
+            val_subset = SubsetHierarchyDataset(deepcopy(trainset), indices_tp_val)
+            val_subset.set_test_transform()
+            train_val_subsets.append((train_subset, val_subset))
     return train_val_subsets, testset, all_tp_info, leaf_idx_to_all_class_idx
 
 

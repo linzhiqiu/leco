@@ -41,7 +41,7 @@ def get_exp_str_from_semi_args(ratio_unlabeled_to_labeled: float=1.,
                                finetuning_mode: str=None):
     if semi_supervised_alg:
         name = f"{semi_supervised_alg}_R_{ratio_unlabeled_to_labeled}"
-        if semi_supervised_alg in ['PL', "FixMatch"]:
+        if semi_supervised_alg in ['PL', "Fixmatch"]:
             name += f"_T_{pl_threshold}"
         elif semi_supervised_alg in ['DistillHard', 'DistillSoft']:
             pass

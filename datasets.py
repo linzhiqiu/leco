@@ -65,6 +65,9 @@ class CIFAR10(LecoDataset):
     
     def get_transform_train(self):
         raise NotImplementedError() #TODO
+    
+    def get_transform_test(self):
+        return get_cifar_transform_test()
 
     def get_weak_and_strong_transform(self):
         return get_cifar_transform_train_weak_aug(), get_cifar_transform_train_strong_aug()
@@ -78,7 +81,7 @@ class CIFAR10(LecoDataset):
             transform=transform_train
         )
 
-        transform_test = get_cifar_transform_test()
+        transform_test = self.get_transform_test()
         testset = torchvision.datasets.CIFAR10(
             root=self.data_dir,
             train=False,

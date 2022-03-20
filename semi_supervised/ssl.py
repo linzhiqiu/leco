@@ -85,9 +85,10 @@ class SSLObjective(nn.Module):
         for i in [0, 1]:
             gt_labels[i] = labels[i].cpu()
         
+        # import pdb; pdb.set_trace()
         ssl_stats = {
             # size 1xN array
-            'max_probs': max_probs.unsqueeze(0).cpu(),
+            'max_probs': max_probs.detach().unsqueeze(0).cpu(),
             # size 2xN array (0 is coarse, 1 is fine)
             'pred_labels': pred_labels,
             # size 2xN array (0 is coarse, 1 is fine)

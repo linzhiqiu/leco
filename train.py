@@ -39,7 +39,7 @@ RATIO_UNLABELED_TO_LABELED = [
 SEMI_SUPERVISED_ALG = [
     None, # Not adding SSL loss
     'PL', # Pseudo-labelling with hard thresholding
-    'FixMatch', # FixMatch with hard thresholding
+    'Fixmatch', # Fixmatch with hard thresholding
     'DistillHard', # Self-training with distillation (hard-label cross entropy)
     'DistillSoft', # Self-training with distillation (soft-label KL divergence)
 ]
@@ -66,8 +66,8 @@ HIERARCHICAL_SEMI_SUPERVISION = [
 
 FINETUNING = [
     None, # No supervised finetuning
-    'finetune_entire', # Finetune entire model on current data for another round
-    'finetune_linear', # Finetune only the linear layer on current data for another round
+    # 'finetune_entire', # Finetune entire model on current data for another round
+    # 'finetune_linear', # Finetune only the linear layer on current data for another round
 ]
 
 argparser = argparse.ArgumentParser()
@@ -93,7 +93,7 @@ argparser.add_argument("--cl_mode",
 argparser.add_argument('--ema_decay',
                        default=None,
                        type=float,
-                       help='EMA decay rate')
+                       help='EMA decay rate. If none, then no ModelEMA is used.')
 argparser.add_argument("--ratio_unlabeled_to_labeled",
                         type=float,
                         default=1.0,
@@ -108,7 +108,7 @@ argparser.add_argument("--pl_threshold",
                         type=float,
                         default=None,
                         choices=PL_THRESHOLDS,
-                        help="The threshold to use for pseudo-labelling based algorithm (PL, FixMatch)")
+                        help="The threshold to use for pseudo-labelling based algorithm (PL, Fixmatch)")
 argparser.add_argument("--partial_feedback_mode",
                         type=str,
                         default=None,
@@ -125,21 +125,21 @@ argparser.add_argument("--finetuning_mode",
                         choices=FINETUNING,
                         help="The finetuning mode to use. Default is None")
 # argparser.add_argument("--distill_temp_T",
-#                         type=float,
-#                         default=1.0,
-#                         help="The softmax temperature for self-training")
+#                        type=float,
+#                        default=1.0,
+#                        help="The softmax temperature for self-training")
 argparser.add_argument("--train_mode",
-                        type=str,
-                        default='wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_pt_linear',
-                        choices=configs.TRAIN_MODES.keys(),
-                        help="The train mode") 
+                       type=str,
+                       default='wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_pt_linear',
+                       choices=configs.TRAIN_MODES.keys(),
+                       help="The train mode") 
 argparser.add_argument('--hparam_strs', nargs='+', default=[],
                        help='The hparam to use for each time period. If not specified, then use hparam_candidate. Should be used to specify the best hparam for all previous time periods.')
 argparser.add_argument("--hparam_candidate",
-                        type=str,
-                        default='cifar',
-                        choices=hparams.HPARAM_CANDIDATES.keys(),
-                        help="The hyperparameter candidates (str) for next time period")  
+                       type=str,
+                       default='cifar',
+                       choices=hparams.HPARAM_CANDIDATES.keys(),
+                       help="The hyperparameter candidates (str) for next time period")  
 argparser.add_argument('--seed', default=None, type=int,
                        help='seed for initializing training. ')
 
@@ -148,6 +148,25 @@ def set_seed(seed):
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+
+def get_setup_dir(result_dir,
+                  setup_mode_str,
+                  seed):
+    seed_str = f"seed_{seed}"
+    setup_dir = os.path.join(result_dir, setup_mode_str, seed_str)
+    return setup_dir
+
+def get_train_dir(setup_dir,
+                  train_mode,
+                  ema_decay,
+                  hparam_list,
+                  tp_idx=0):
+    assert tp_idx == 0
+    dir_name = os.path.join(setup_dir,
+                            get_exp_str_from_train_mode(train_mode, tp_idx=tp_idx),
+                            get_exp_str_from_ema_decay(ema_decay),
+                            get_exp_str_from_hparam_strs(hparam_list, tp_idx=tp_idx))
+    return dir_name
 
 def get_semi_supervised_dir(setup_dir,
                             ema_decay: float=None,
@@ -208,8 +227,9 @@ def train(loaders,
     phases = ['train', 'val', 'test']
 
     # Save best model based on select_criterion
-    best_result = {'best_loss': None, # overall loss at best epoch
-                   'best_acc': 0, # overall acc at best epoch
+    best_result = {
+                #    'best_loss': None, # overall loss at best epoch
+                #    'best_acc': 0, # overall acc at best epoch
                    'best_value' : None, # Best value of select_criterion
                    'best_epoch': None,
                    'best_model': None,
@@ -289,8 +309,8 @@ def train(loaders,
             print(
                 f"Best val {select_criterion} at epoch {epoch} being {curr_value}")
             best_result['best_epoch'] = epoch
-            best_result['best_acc'] = avg_acc
-            best_result['best_loss'] = avg_loss
+            # best_result['best_acc'] = val_acc
+            # best_result['best_loss'] = val_loss
             best_result['best_value'] = curr_value
             best_model = copy.deepcopy(eval_model.state_dict())
             if tp_idx in SAVE_BEST_MODEL_FOR_TIME:
@@ -346,6 +366,7 @@ def get_ssl_loss_func(
         model,
         hparam_mode,
         tp_idx,
+        ema_decay,
         edge_matrix: torch.Tensor = None,
         semi_supervised_alg: str = None,
         pl_threshold: float = None,
@@ -382,8 +403,9 @@ def get_ssl_loss_func(
                 epochs,
                 eval_steps,
                 tp_idx,
+                ema_decay=ema_decay
             )
-            print(f"Teacher achieves {best_result['best_acc']} val acc")
+            print(f"Teacher achieves {acc_result['val']} val acc")
             
             if semi_supervised_alg == 'DistillHard':
                 ssl_objective = DistillHard(
@@ -405,7 +427,7 @@ def get_ssl_loss_func(
                 hierarchical_ssl=hierarchical_ssl,
                 edge_matrix=edge_matrix
             )
-        elif semi_supervised_alg == 'FixMatch':
+        elif semi_supervised_alg == 'Fixmatch':
             ssl_objective = Fixmatch(
                 pl_threshold,
                 hierarchical_ssl=hierarchical_ssl,
@@ -507,8 +529,9 @@ def train_semi_supervised(
     phases = ['train', 'val', 'test']
 
     # Save best model based on select_criterion
-    best_result = {'best_loss': None, # overall val loss at best epoch
-                   'best_acc': 0, # overall val acc at best epoch
+    best_result = {
+                #    'best_loss': None, # overall val loss at best epoch
+                #    'best_acc': 0, # overall val acc at best epoch
                    'best_value' : None, # Best value of select_criterion
                    'best_epoch': None,
                    'best_model': None,
@@ -595,8 +618,8 @@ def train_semi_supervised(
                     for k in ssl_stats
                 }
                 loss = loss + ssl_loss + coarse_loss
-                running_loss_coarse += coarse_loss.item() * unlabeled_inputs.size(0)
-                running_loss_ssl = ssl_loss.item() * unlabeled_inputs.size(0)
+                running_loss_coarse += float(coarse_loss) * unlabeled_inputs.size(0)
+                running_loss_ssl = float(ssl_loss) * unlabeled_inputs.size(0)
 
                 loss.backward()
                 optimizer.step()
@@ -607,15 +630,23 @@ def train_semi_supervised(
             # statistics
             running_loss += labeled_loss.item() * labeled_inputs.size(0)
             running_corrects += torch.sum(labeled_preds == labeled_labels.data)
-            p_bar.set_description("Train Epoch: {epoch}/{epochs:4}. Iter: {batch:4}/{iter:4}. LR: {lr:.4f}. Loss: {loss:.4f}. Coarse: {loss_coarse:.4f}. SSL: {loss_ssl:.4f}.".format(
+            if count_unlabeled > 0:
+                auxilary_str = "Coarse: {coarse_loss_to_print:.4f}. SSL: {ssl_loss_to_print:.4f}.".format(
+                    coarse_loss_to_print=float(running_loss_coarse)/count_unlabeled,
+                    ssl_loss_to_print=float(running_loss_ssl)/count_unlabeled
+                )
+            else:
+                auxilary_str = ""
+            p_bar.set_description("Train Epoch: {epoch}/{epochs:4}. Iter: {batch:4}/{iter:4}. LR: {lr:.4f}. Loss: {loss:.4f}. {auxilary_str}".format(
                 epoch=epoch + 1,
                 epochs=epochs,
                 batch=batch + 1,
                 iter=eval_steps,
                 lr=scheduler.get_last_lr()[0],
-                loss=float(running_loss)/count),
-                loss_ssl=float(running_loss_ssl)/count_unlabeled if count_unlabeled > 0 else 0.0,
-                loss_coarse=float(running_loss_coarse)/count_unlabeled if count_unlabeled > 0 else 0.0)
+                loss=float(running_loss)/count,
+                auxilary_str=auxilary_str,
+                # loss_ssl_pbar=loss_ssl_pbar
+                ))
             p_bar.update()
         
         p_bar.close()
@@ -645,8 +676,8 @@ def train_semi_supervised(
             print(
                 f"Best val {select_criterion} at epoch {epoch} being {curr_value}")
             best_result['best_epoch'] = epoch
-            best_result['best_acc'] = avg_acc
-            best_result['best_loss'] = avg_loss
+            # best_result['best_acc'] = val_acc
+            # best_result['best_loss'] = val_loss
             best_result['best_value'] = curr_value
             best_result['best_stat'] = best_stats(epoch)
             best_model = copy.deepcopy(eval_model.state_dict())
@@ -742,10 +773,12 @@ def get_loaders(labeled_set,
                             )
     print(f"Labeled batch size is {batch_size}; unlabeled is {unlabeled_batch_size}")
     
-    import ipdb; ipdb.set_trace()
-    assert isinstance(unlabeled_set, HierarchyDataset)
+    # print("Need to check whether the new set has new transform + old set has old transform!")
+    assert isinstance(unlabeled_set, setups.HierarchyDataset) or \
+           isinstance(unlabeled_set, setups.SubsetHierarchyDataset) or \
+           isinstance(unlabeled_set, setups.ConcatHierarchyDataset)
     unlabeled_set_weak_strong = copy.deepcopy(unlabeled_set)
-    unlabeled_set_weak_strong.dataset.transform = unlabeled_set_weak_strong.weak_strong_transform
+    unlabeled_set_weak_strong.update_transform(unlabeled_set_weak_strong.weak_strong_transform)
     loaders['unlabeled_weak_strong'] = torch.utils.data.DataLoader(
                                             unlabeled_set_weak_strong,
                                             batch_size=unlabeled_batch_size,
@@ -868,6 +901,7 @@ def start_training_semi_supervised(model,
     model = update_model(
                 model,
                 model_save_dir,
+                tp_idx,
                 train_mode, 
                 num_of_classes[tp_idx],
                 partial_feedback_mode
@@ -893,10 +927,6 @@ def start_training_semi_supervised(model,
     
     labeled_set, unlabeled_set, val_set = get_dataset(train_val_subsets, tp_idx, cl_mode)
 
-    if not partial_feedback_mode and not semi_supervised_alg:
-        print("Must specify one of partial_feedback or semi_supervised_alg. Otherwise run train.py.")
-        kill(0)
-    
     loaders = get_loaders(labeled_set,
                           unlabeled_set,
                           val_set,
@@ -914,13 +944,14 @@ def start_training_semi_supervised(model,
         model,
         hparam_mode,
         tp_idx,
+        ema_decay,
         edge_matrix=edge_matrix,
         semi_supervised_alg=semi_supervised_alg,
         pl_threshold=pl_threshold,
         hierarchical_ssl=hierarchical_ssl,
     )
     
-    use_both_weak_and_strong = semi_supervised_alg == 'FixMatch'
+    use_both_weak_and_strong = semi_supervised_alg == 'Fixmatch'
     if use_both_weak_and_strong:
         print("Running fixmatch..")
     model, acc_result, best_result, avg_results, stats = train_semi_supervised(
@@ -983,14 +1014,15 @@ def start_experiment(data_dir: str, # where the data are saved
         assert semi_supervised_alg == None
         assert partial_feedback_mode == None
     
-    seed_str = f"seed_{seed}"
     if seed == None:
         print("Not using a random seed")
     else:
         print(f"Using random seed {seed}")
         set_seed(seed)
     
-    setup_dir = os.path.join(result_dir, setup_mode_str, seed_str)
+    setup_dir = get_setup_dir(result_dir,
+                              setup_mode_str,
+                              seed)
     makedirs(setup_dir)
     dataset_path = os.path.join(setup_dir, 'dataset.pt')
     if os.path.exists(dataset_path):
@@ -1012,10 +1044,11 @@ def start_experiment(data_dir: str, # where the data are saved
             if len(hparam_strs) == 0:
                 for hparams_str in hparams.HPARAM_CANDIDATES[hparam_candidate]:
                     hparams_mode = hparams.HPARAMS[hparams_str]
-                    interim_exp_dir_tp_idx = os.path.join(setup_dir,
-                                                          get_exp_str_from_train_mode(train_mode, tp_idx=tp_idx),
-                                                          get_exp_str_from_ema_decay(ema_decay),
-                                                          get_exp_str_from_hparam_strs([hparams_str], tp_idx=tp_idx))
+                    interim_exp_dir_tp_idx = get_train_dir(setup_dir,
+                                                           train_mode,
+                                                           ema_decay,
+                                                           [hparams_str],
+                                                           tp_idx=tp_idx)
                     makedirs(interim_exp_dir_tp_idx)
                     exp_result_path = os.path.join(interim_exp_dir_tp_idx, "result.ckpt")
 
@@ -1036,18 +1069,19 @@ def start_experiment(data_dir: str, # where the data are saved
                         )
 
                         save_obj_as_pickle(exp_result_path, {
-                            # 'model' : new_model, #TODO
+                            'model' : new_model, #TODO
                             'acc_result' : acc_result,
                             'best_result' : best_result,
                             'avg_results' : avg_results
                         })
-                print(f"Finished for {tp_idx} time period. Please run collect_results_semi.py")
+                print(f"Finished for {tp_idx} time period. Please run collect.py")
                 break
             else:
-                interim_exp_dir_tp_idx = os.path.join(setup_dir,
-                                                      get_exp_str_from_train_mode(train_mode, tp_idx=tp_idx),
-                                                      get_exp_str_from_ema_decay(ema_decay),
-                                                      get_exp_str_from_hparam_strs(hparam_strs, tp_idx=tp_idx))
+                interim_exp_dir_tp_idx = get_train_dir(setup_dir,
+                                                       train_mode,
+                                                       ema_decay,
+                                                       hparam_strs,
+                                                       tp_idx=tp_idx)
                 exp_result_path = os.path.join(interim_exp_dir_tp_idx, "result.ckpt")
                 # Load the model
                 if not os.path.exists(exp_result_path):
@@ -1057,7 +1091,17 @@ def start_experiment(data_dir: str, # where the data are saved
                 else:
                     print(f"{tp_idx} time period already finished. Load from {exp_result_path}")
                     exp_result = load_pickle(exp_result_path)
-                    model = exp_result['model']
+                    if not 'model' in exp_result: #TODO Remove this
+                        model = update_model_time_0(
+                            model_save_dir,
+                            train_mode,
+                            all_tp_info[0]['num_of_classes']
+                        )
+                        model.load_state_dict(exp_result['best_result']['best_model'])
+                        exp_result['model'] = model
+                        save_obj_as_pickle(exp_result_path, exp_result)
+                    else:
+                        model = exp_result['model']
         else:
             print(f"Working on time period {tp_idx}")
             for hparams_str in hparams.HPARAM_CANDIDATES[hparam_candidate]:
