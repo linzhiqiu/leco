@@ -1,3 +1,22 @@
+def needs_redo(
+        cl_mode='use_new',
+        train_mode=None,
+        hparam_list=[],
+        ratio_unlabeled_to_labeled=1.0,
+        semi_supervised_alg=None,
+        pl_threshold=None,
+        partial_feedback_mode=None,
+        hierarchical_ssl=None,
+        finetuning_mode=None,
+        ema_decay=0.999
+    ):
+    if semi_supervised_alg and hierarchical_ssl in ['conditioning', 'filtering_conditioning']:
+        return True
+    if semi_supervised_alg == 'Fixmatch':
+        return True
+    return False
+
+
 import os
 import argparse
 import random
@@ -607,7 +626,7 @@ def train_semi_supervised(
                 
                 unlabeled_outputs = model(unlabeled_inputs)
                 coarse_loss = coarse_loss_func(unlabeled_outputs, unlabeled_labels[tp_idx-1].cuda())
-                
+                # import pdb; pdb.set_trace()
                 ssl_stats, ssl_loss = ssl_loss_func(
                                             model_single_head,
                                             unlabeled_inputs if not use_both_weak_and_strong else w_s_unlabeled_inputs,
@@ -1126,9 +1145,24 @@ def start_experiment(data_dir: str, # where the data are saved
                 
                 edge_matrix = get_edge_matrix(leaf_idx_to_all_class_idx, superclass_time=tp_idx-1)
                 
-                if os.path.exists(exp_result_path):
+                
+                to_redo = needs_redo(
+                    cl_mode=cl_mode,
+                    train_mode=train_mode,
+                    hparam_list=hparam_strs+[hparams_str],
+                    ratio_unlabeled_to_labeled=ratio_unlabeled_to_labeled,
+                    semi_supervised_alg=semi_supervised_alg,
+                    pl_threshold=pl_threshold,
+                    partial_feedback_mode=partial_feedback_mode,
+                    hierarchical_ssl=hierarchical_ssl,
+                    finetuning_mode=finetuning_mode,
+                    ema_decay=ema_decay
+                )
+                if os.path.exists(exp_result_path) and not to_redo:
                     print(f"{tp_idx} time period already finished for {hparams_str}")
                 else:
+                    if to_redo:
+                        print("Redoing the experiments!!") #TODO
                     print(f"Run {train_mode_str} for TP {tp_idx}")
                     # exp_result do not exist, therefore start training
                     new_model, acc_result, best_result, avg_results, stats = start_training_semi_supervised(

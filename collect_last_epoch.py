@@ -1,10 +1,9 @@
-# python collect_no_validation.py --data_dir /scratch/leco/ --hparam_candidate cifar --result_dir /data3/zhiqiul/leco_results/ --model_save_dir /data3/zhiqiul/self_supervised_models/wideres_28_2/ 
-# python collect_no_validation.py --data_dir /scratch/leco/ --hparam_candidate cifar --result_dir /data3/zhiqiul/leco_results/ --model_save_dir /data3/zhiqiul/self_supervised_models/wideres_28_2/ --ema_decay 0.999
+# python collect_last_epoch.py --data_dir /scratch/leco/ --hparam_candidate cifar --result_dir /data3/zhiqiul/leco_results/ --model_save_dir /data3/zhiqiul/self_supervised_models/wideres_28_2/ 
+# python collect_last_epoch.py --data_dir /scratch/leco/ --hparam_candidate cifar --result_dir /data3/zhiqiul/leco_results/ --model_save_dir /data3/zhiqiul/self_supervised_models/wideres_28_2/ --ema_decay 0.999
 
 
 
-TP0_BEST_HPARAM = ['cifar10_lr_0006_batch_128']
-
+TP0_BEST_HPARAM = ['cifar10_lr_006_batch_128']
 
 
 
@@ -13,7 +12,7 @@ import argparse
 import random
 import numpy as np
 import configs
-from util import load_pickle, makedirs
+from util import load_pickle, makedirs, load_json
 import hparams
 import setups
 from tabulate import tabulate
@@ -49,21 +48,41 @@ argparser.add_argument("--hparam_candidate",
 #                         choices=configs.ALL_TRAIN_MODES.keys(),
 #                         help="The train mode candidates for this setup")
 
-SEED_LIST = [None, 1, 10, 100, 1000]
-PL_THRESHOLDS = train.PL_THRESHOLDS
+# For all CL modes
+# SEED_LIST = [None, 1, 10, 100, 1000]# TODO
+# SEED_LIST = [None]
+# PL_THRESHOLDS = train.PL_THRESHOLDS # TODO
+# RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
+# HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
+# FINETUNING = train.FINETUNING
+# CL_MODES = cl_mode.CL_MODES
+# PARTIAL_FEEDBACK_MODE=[None]
+# SEMI_SUPERVISED_ALG=[None] #TODO
+# TRAIN_MODE_LIST = configs.ALL_TRAIN_MODES['cifar'] # TODO
+
+
+# For SSL
+SEED_LIST = [None] #TODO
+PL_THRESHOLDS = [0.95]
 RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
 HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
 FINETUNING = train.FINETUNING
-CL_MODES = cl_mode.CL_MODES
+CL_MODES = ['use_new']
+PARTIAL_FEEDBACK_MODE=[None]
+SEMI_SUPERVISED_ALG=["DistillHard", "DistillSoft", "Fixmatch", "PL", None] #TODO
+TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
+
+# For Partial feedback
+# SEED_LIST = [None] #TODO
+# PL_THRESHOLDS = train.PL_THRESHOLDS
+# RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
+# HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
+# FINETUNING = train.FINETUNING
 # CL_MODES = ['use_new']
-PARTIAL_FEEDBACK_MODE=train.PARTIAL_FEEDBACK_MODE
-# SEMI_SUPERVISED_ALG=train.SEMI_SUPERVISED_ALG
-SEMI_SUPERVISED_ALG=[None] #TODO
-# SEMI_SUPERVISED_ALG=["DistillHard"] #TODO
-PARTIAL_FEEDBACK_MODE=[None] #TODO
-TRAIN_MODE_LIST = configs.ALL_TRAIN_MODES['cifar'] # TODO
-# TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear',
-#                    'wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_pt_linear']
+# PARTIAL_FEEDBACK_MODE=train.PARTIAL_FEEDBACK_MODE
+# # SEMI_SUPERVISED_ALG=["DistillHard", "DistillSoft", "Fixmatch", "PL", ] #TODO
+# SEMI_SUPERVISED_ALG=[None]
+# TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
 
 
 def mean_std_from_dict(lst_of_dict, key):
@@ -321,6 +340,12 @@ def save_t_1_res(print_result_dir_time_1, t_1_res):
         file.write(tabulate(all_rows, headers=all_headers, tablefmt='orgtbl'))
         print(f"Save at {write_path}")
 
+def get_best_stats(stats, best_epoch):
+    best_stat = {
+        k : stats[k][best_epoch] for k in stats
+    }
+    return best_stat
+    
 def gather_exp(data_dir: str,
                result_dir: str,
                model_save_dir : str,
@@ -400,7 +425,7 @@ def gather_exp(data_dir: str,
                             # exp_result = load_pickle(exp_result_path)
                             all_hparam_candidates_are_ready = False
                             break
-                        best_epoch = 159
+                        best_epoch = len(exp_result['avg_results']['train']['acc_per_epoch'])-1
                         # best_stats = exp_result['best_result']['best_stat']
                         train_acc = exp_result['avg_results']['train']['acc_per_epoch'][best_epoch]
                         test_acc = exp_result['avg_results']['test']['acc_per_epoch'][best_epoch]
@@ -542,15 +567,19 @@ def gather_exp(data_dir: str,
                                                         import pdb; pdb.set_trace()
                                                         all_hparam_candidates_are_ready = False
                                                         break
-                                                    best_epoch = 159
-                                                    # best_stats = exp_result['best_result']['best_stat']
-                                                    if train_mode_str == "wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear":
+                                                    stats_path = os.path.join(train_semi_supervised_dir,
+                                                                              "stats.json")
+                                                    try:
+                                                        stats = load_json(stats_path)
+                                                    except:
+                                                        print(stats_path + " does not exist or truncated?")
                                                         import pdb; pdb.set_trace()
+                                                        all_hparam_candidates_are_ready = False
+                                                        break
+                                                    best_epoch = len(exp_result['avg_results']['train']['acc_per_epoch'])-1
                                                     train_acc = exp_result['avg_results']['train']['acc_per_epoch'][best_epoch]
                                                     test_acc = exp_result['avg_results']['test']['acc_per_epoch'][best_epoch]
-                                                    best_stats = exp_result['best_result']['best_stat'] # TODO Fix this
-                                                    # train_acc = exp_result['acc_result']['train']
-                                                    # test_acc = exp_result['acc_result']['test']
+                                                    best_stats = get_best_stats(stats, best_epoch)
                                                     tp_results.append({
                                                         'best_epoch' : best_epoch,
                                                         'mask_rate' : best_stats['mask_rate'],

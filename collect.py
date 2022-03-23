@@ -16,6 +16,7 @@ import copy
 import train
 import cl_mode
 from print_utils import get_exp_str_from_ema_decay
+from train import needs_redo
 
 argparser = argparse.ArgumentParser()
 argparser.add_argument("--data_dir", 
@@ -42,21 +43,52 @@ argparser.add_argument("--hparam_candidate",
 #                         choices=configs.ALL_TRAIN_MODES.keys(),
 #                         help="The train mode candidates for this setup")
 
-SEED_LIST = [None, 1, 10, 100, 1000]
-PL_THRESHOLDS = train.PL_THRESHOLDS
+# For all CL modes
+# SEED_LIST = [None, 1, 10, 100, 1000]# TODO
+# SEED_LIST = [None]
+# PL_THRESHOLDS = train.PL_THRESHOLDS # TODO
+# RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
+# HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
+# FINETUNING = train.FINETUNING
+# CL_MODES = cl_mode.CL_MODES
+# PARTIAL_FEEDBACK_MODE=[None]
+# SEMI_SUPERVISED_ALG=[None] #TODO
+# TRAIN_MODE_LIST = configs.ALL_TRAIN_MODES['cifar'] # TODO
+
+
+# For SSL
+SEED_LIST = [None] #TODO
+PL_THRESHOLDS = [0.95]
 RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
 HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
 FINETUNING = train.FINETUNING
-CL_MODES = cl_mode.CL_MODES
+CL_MODES = ['use_new', 'use_both']
+PARTIAL_FEEDBACK_MODE=[None]
+SEMI_SUPERVISED_ALG=["DistillHard", "DistillSoft", "Fixmatch", "PL", None] #TODO
+TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
+
+# For Partial feedback
+# SEED_LIST = [None] #TODO
+# PL_THRESHOLDS = train.PL_THRESHOLDS
+# RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
+# HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
+# FINETUNING = train.FINETUNING
 # CL_MODES = ['use_new']
-PARTIAL_FEEDBACK_MODE=train.PARTIAL_FEEDBACK_MODE
-# SEMI_SUPERVISED_ALG=train.SEMI_SUPERVISED_ALG
-SEMI_SUPERVISED_ALG=[None] #TODO
-# SEMI_SUPERVISED_ALG=["DistillHard"] #TODO
-PARTIAL_FEEDBACK_MODE=[None] #TODO
-TRAIN_MODE_LIST = configs.ALL_TRAIN_MODES['cifar'] # TODO
-# TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear',
-#                    'wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_pt_linear']
+# PARTIAL_FEEDBACK_MODE=train.PARTIAL_FEEDBACK_MODE
+# # SEMI_SUPERVISED_ALG=["DistillHard", "DistillSoft", "Fixmatch", "PL", ] #TODO
+# SEMI_SUPERVISED_ALG=[None]
+# TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
+
+# For SSL + two head
+# SEED_LIST = [None] #TODO
+# PL_THRESHOLDS = [0.95]
+# RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
+# HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
+# FINETUNING = train.FINETUNING
+# CL_MODES = ['use_new']
+# PARTIAL_FEEDBACK_MODE=['two_head']
+# SEMI_SUPERVISED_ALG=["DistillHard", "DistillSoft", "Fixmatch", "PL", None] #TODO
+# TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
 
 
 def mean_std_from_dict(lst_of_dict, key):
@@ -525,9 +557,21 @@ def gather_exp(data_dir: str,
                                                     finetuning_mode=finetuning_mode,
                                                     tp_idx=1
                                                 )
+                                                to_redo = needs_redo(
+                                                    cl_mode=cl_mode,
+                                                    train_mode=train_mode,
+                                                    hparam_list=best_hparam_list+[hparam_str],
+                                                    ratio_unlabeled_to_labeled=ratio_unlabeled_to_labeled,
+                                                    semi_supervised_alg=semi_supervised_alg,
+                                                    pl_threshold=pl_threshold,
+                                                    partial_feedback_mode=partial_feedback_mode,
+                                                    hierarchical_ssl=hierarchical_semi_supervision,
+                                                    finetuning_mode=finetuning_mode,
+                                                    ema_decay=ema_decay
+                                                )
                                                 exp_result_path = os.path.join(train_semi_supervised_dir,
                                                                                'result.ckpt')
-                                                if os.path.exists(exp_result_path):
+                                                if os.path.exists(exp_result_path) and not to_redo:
                                                     try:
                                                         exp_result = load_pickle(exp_result_path)
                                                     except:
@@ -620,8 +664,9 @@ def gather_exp(data_dir: str,
                                             t_0_result = result_dict[setup_mode][train_mode_str][0]['all_results'][best_hparam_list[0]]
                                             t_1_best_hparam = best_hparam_str
                                             t_1_result = all_results[t_1_best_hparam]
-                                            
-                                            t_1_res.append([configuration_dict_as_key, t_0_result, t_0_best_hparam, t_1_result, t_1_best_hparam])
+                                            res = [configuration_dict_as_key, t_0_result, t_0_best_hparam, t_1_result, t_1_best_hparam]
+                                            t_1_res.append(res)
+                                            # all_t_1_res.append(res)
                                             print(f"For setup {setup_mode}, train mode {train_mode_str}, tp 1, config {configuration_dict_as_key}, the best hparam is {best_hparam_str} with test acc {best_test_acc_mean}")
                                         else:
                                             # prepare scripts for this tp_idx
@@ -654,6 +699,7 @@ def gather_exp(data_dir: str,
                     
                         # save_best_results(print_result_dir_time_1, t_1_res, setup_mode, all_tp_info)
                         save_t_1_res(print_result_dir_time_1, t_1_res)
+            
         print(f"Setup {setup_mode}: Total {len(scripts_to_run)} scripts.")
         write_scripts_to_file(scripts_to_run, print_result_dir, setup_mode)
         

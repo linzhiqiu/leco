@@ -45,6 +45,13 @@ class SSLObjective(nn.Module):
         else:
             raise NotImplementedError()
     
+    def calc_conditioned_labels(self, model, inputs, labels):
+        with torch.no_grad():
+            outputs = self.calc_outputs(model, inputs)
+            conditioned_probs = self.condition_outputs_for_probs(outputs, labels)
+            _, conditioned_labels = conditioned_probs.max(1)
+        return conditioned_labels
+            
     def calc_labels(self, model, inputs):
         with torch.no_grad():
             outputs = self.calc_outputs(model, inputs)

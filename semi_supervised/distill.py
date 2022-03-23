@@ -14,12 +14,12 @@ class DistillSoft(SSLObjective):
         self.model_T.eval()
         self.T = T
     
-    def masked_kl(self, model, outputs_s, inputs, labels):
+    def masked_kl(self, model, outputs_T, inputs, labels):
         with torch.no_grad():
-            outputs_t = self.calc_outputs(self.model_T, inputs)
-            log_p_t = self.condition_outputs_for_log_probs(outputs_t/self.T, labels)
-            # log_p_t = torch.log(p_t)
+            # outputs_t = self.calc_outputs(self.model_T, inputs)
+            log_p_t = self.condition_outputs_for_log_probs(outputs_T/self.T, labels)
         
+        outputs_s = self.calc_outputs(model, inputs)
         log_p_s = F.log_softmax(outputs_s/self.T, dim=1)
         kld_loss = F.kl_div(log_p_s, log_p_t, reduction='none', log_target=True)
         kld_loss = kld_loss * (self.T**2) * self.edge_matrix.T[labels[0]]
@@ -27,13 +27,14 @@ class DistillSoft(SSLObjective):
 
     def forward(self, model, inputs, labels):
         labels = self.put_on_device(labels, inputs.device)
-
-        outputs = self.calc_outputs(model, inputs)
-        probs = F.softmax(outputs, dim=1)
-        ssl_stats = self.calc_ssl_stats(probs, labels)
+        with torch.no_grad():
+            outputs_T = self.calc_outputs(self.model_T, inputs)
+            # outputs = self.calc_outputs(model, inputs)
+            probs_T = F.softmax(outputs_T, dim=1)
+            ssl_stats = self.calc_ssl_stats(probs_T, labels)
         
-        kld_loss = self.masked_kl(model, outputs, inputs, labels)
-        filter_mask = self.calc_filter_mask(probs, labels)
+        kld_loss = self.masked_kl(model, outputs_T, inputs, labels)
+        filter_mask = self.calc_filter_mask(probs_T, labels)
         
         kld_loss = filter_mask * kld_loss
         return ssl_stats, kld_loss.mean()
@@ -57,18 +58,25 @@ class DistillHard(SSLObjective):
 
     def forward(self, model, inputs, labels):
         labels = self.put_on_device(labels, inputs.device)
-
-        outputs = self.calc_outputs(model, inputs)
-        probs = F.softmax(outputs, dim=1)
-        ssl_stats = self.calc_ssl_stats(probs, labels)
+        with torch.no_grad():
+            outputs_T = self.calc_outputs(self.model_T, inputs)
+            # outputs = self.calc_outputs(model, inputs)
+            probs_T = F.softmax(outputs_T, dim=1)
+            ssl_stats = self.calc_ssl_stats(probs_T, labels)
         
-        filter_mask = self.calc_filter_mask(probs, labels)
-
-        conditioned_log_probs = self.condition_outputs_for_log_probs(outputs, labels)
-        labels_T = self.calc_labels_T(inputs)
+        # outputs = self.calc_outputs(model, inputs)
+        # probs = F.softmax(outputs, dim=1)
+        # ssl_stats = self.calc_ssl_stats(probs, labels)
+        
+        filter_mask = self.calc_filter_mask(probs_T, labels)
+        outputs = self.calc_outputs(model, inputs)
+        log_probs = F.log_softmax(outputs, dim=1)
+        
+        # conditioned_log_probs = self.condition_outputs_for_log_probs(outputs, labels)
+        # labels_T = self.calc_labels_T(inputs)
         ce_loss = torch.nn.NLLLoss(reduction='none')(
-            conditioned_log_probs,
-            labels_T
+            log_probs,
+            self.calc_conditioned_labels(self.model_T, inputs, labels)
         )
 
         ce_loss = filter_mask * ce_loss

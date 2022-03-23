@@ -29,12 +29,12 @@ class PseudoLabel(SSLObjective):
         pl_mask = self.calc_pl_mask(conditioned_probs)
         final_mask = pl_mask & filter_mask
         
-        conditioned_log_probs = self.condition_outputs_for_log_probs(outputs, labels)
+        log_probs = F.log_softmax(outputs, dim=1)
         
         pl_loss = torch.nn.NLLLoss(reduction='none')(
             # torch.log(conditioned_probs) + 1e-20,
-            conditioned_log_probs,
-            self.calc_labels(model, inputs)
+            log_probs,
+            self.calc_conditioned_labels(model, inputs, labels)
         )
         
         pl_loss = final_mask * pl_loss

@@ -59,6 +59,46 @@ class LecoDataset():
         all_tp_info = None
         raise NotImplementedError() # return (all_tp_info, leaf_idx_to_all_class_idx)
 
+def get_cifar_tp_info(cifar_classes,
+                      cifar_hierachy,
+                      tp_names):
+    leaf_idx_to_all_class_idx = {} # leaf_idx_to_all_class_idx[leaf_idx][super_class_time] = super_class_idx at super_class_time of this leaf class 
+    all_tp_info = []
+    for tp_idx in range(0, 2):
+        tp_info = {
+            'tp_name' : tp_names[tp_idx],
+            'tp_idx' : tp_idx,
+            'all_classes' : [],
+            'num_of_classes' : 0,
+            'idx_to_leaf_name' : {},
+            'leaf_name_to_idx' : {},
+        }
+        for class_name in cifar_classes[tp_idx]:
+            class_id = cifar_classes[tp_idx][class_name]
+            tp_info['idx_to_leaf_name'][class_id] = class_name
+            tp_info['leaf_name_to_idx'][class_name] = class_id
+        for class_id in sorted(list(tp_info['idx_to_leaf_name'].keys())):
+            tp_info['all_classes'].append(tp_info['idx_to_leaf_name'][class_id]) 
+        tp_info['num_of_classes'] = len(tp_info['all_classes'])
+        
+        all_tp_info.append(tp_info)
+        if tp_idx == 1:
+            for super_class_name in cifar_hierachy:
+                super_class_idx = all_tp_info[0]['leaf_name_to_idx'][super_class_name]
+                sub_class_names = cifar_hierachy[super_class_name]
+                sub_class_indices = [all_tp_info[1]['leaf_name_to_idx'][sub_class_name]
+                                     for sub_class_name in sub_class_names]
+                for sub_class_idx in sub_class_indices:
+                    leaf_idx_to_all_class_idx[sub_class_idx] = [super_class_idx, sub_class_idx]
+
+    for leaf_idx in leaf_idx_to_all_class_idx:
+        if not leaf_idx_to_all_class_idx[leaf_idx][-1] == leaf_idx:
+            print("Wrong label format: Last index must be leaf index")
+            import pdb; pdb.set_trace()
+    for i, tp_info in enumerate(all_tp_info):
+        assert tp_info['tp_idx'] == i
+    return all_tp_info, leaf_idx_to_all_class_idx
+    
 class CIFAR10(LecoDataset):
     def __init__(self, data_dir):
         super().__init__(data_dir)
@@ -101,45 +141,11 @@ class CIFAR10(LecoDataset):
             'animal' : ['cat', 'frog', 'bird', 'deer', 'dog', 'horse'] # animal
         }
 
-        leaf_idx_to_all_class_idx = {} # leaf_idx_to_all_class_idx[leaf_idx][super_class_time] = super_class_idx at super_class_time of this leaf class 
-        all_tp_info = []
         tp_names = ['cifar10_tp_0', 'cifar10_tp_1']
-        for tp_idx in range(0, 2):
-            tp_info = {
-                'tp_name' : tp_names[tp_idx],
-                'tp_idx' : tp_idx,
-                'all_classes' : [],
-                'num_of_classes' : 0,
-                'idx_to_leaf_name' : {},
-                'leaf_name_to_idx' : {},
-            }
-            for class_name in cifar_classes[tp_idx]:
-                class_id = cifar_classes[tp_idx][class_name]
-                tp_info['idx_to_leaf_name'][class_id] = class_name
-                tp_info['leaf_name_to_idx'][class_name] = class_id
-            for class_id in sorted(list(tp_info['idx_to_leaf_name'].keys())):
-                tp_info['all_classes'].append(tp_info['idx_to_leaf_name'][class_id]) 
-            tp_info['num_of_classes'] = len(tp_info['all_classes'])
-            
-            all_tp_info.append(tp_info)
-            if tp_idx == 1:
-                for super_class_name in cifar_hierachy:
-                    super_class_idx = all_tp_info[0]['leaf_name_to_idx'][super_class_name]
-                    sub_class_names = cifar_hierachy[super_class_name]
-                    sub_class_indices = [all_tp_info[1]['leaf_name_to_idx'][sub_class_name]
-                                         for sub_class_name in sub_class_names]
-                    for sub_class_idx in sub_class_indices:
-                        leaf_idx_to_all_class_idx[sub_class_idx] = [super_class_idx, sub_class_idx]
-
-        # leaf_idx_to_all_class_idx = {} # leaf_idx_to_all_class_idx[leaf_idx][super_class_time] = super_class_idx at super_class_time of this leaf class 
-        for leaf_idx in leaf_idx_to_all_class_idx:
-            if not leaf_idx_to_all_class_idx[leaf_idx][-1] == leaf_idx:
-                print("Wrong label format: Last index must be leaf index")
-                import pdb; pdb.set_trace()
-        for i, tp_info in enumerate(all_tp_info):
-            assert tp_info['tp_idx'] == i
-        return all_tp_info, leaf_idx_to_all_class_idx
-
+        return get_cifar_tp_info(cifar_classes,
+                                 cifar_hierachy,
+                                 tp_names)
+        
 class CIFAR10WeakAug(CIFAR10):
     def __init__(self, data_dir):
         super().__init__(data_dir)
@@ -153,6 +159,119 @@ class CIFAR10StrongAug(CIFAR10):
     
     def get_transform_train(self):
         return get_cifar_transform_train_strong_aug()
+
+class CIFAR100(LecoDataset):
+    def __init__(self, data_dir):
+        super().__init__(data_dir)
+    
+    def get_transform_train(self):
+        raise NotImplementedError() #TODO
+    
+    def get_transform_test(self):
+        return get_cifar_transform_test()
+
+    def get_weak_and_strong_transform(self):
+        return get_cifar_transform_train_weak_aug(), get_cifar_transform_train_strong_aug()
+
+    def get_dataset(self):
+        transform_train = self.get_transform_train()
+        trainset = torchvision.datasets.CIFAR100(
+            root=self.data_dir,
+            train=True,
+            download=True,
+            transform=transform_train
+        )
+
+        transform_test = self.get_transform_test()
+        testset = torchvision.datasets.CIFAR100(
+            root=self.data_dir,
+            train=False,
+            download=True,
+            transform=transform_test
+        )
+        return trainset, testset
+    
+    def get_class_hierarchy(self):
+        cifar_classes = {
+            0 : {'aquatic_mammals' : 0,
+                 'fish' : 1,
+                 'flowers' : 2,
+                 'food_containers' : 3,
+                 'fruit_and_vegetables' : 4,
+                 'household_electrical_devices' : 5,
+                 'household_furniture' : 6,
+                 'insects' : 7,
+                 'large_carnivores' : 8,
+                 'large_man_made_outdoor_things' : 9,
+                 'large_natural_outdoor_scenes' : 10,
+                 'large_omnivores_and_herbivores' : 11,
+                 'medium_sized_mammals' : 12,
+                 'non_insect_invertebrates' : 13,
+                 'people' : 14,
+                 'reptiles' : 15,
+                 'small_mammals' : 16,
+                 'trees' : 17,
+                 'vehicles_1' : 18,
+                 'vehicles_2' : 19},
+            1 : {'apple': 0, 'aquarium_fish': 1, 'baby': 2, 'bear': 3, 'beaver': 4, 'bed': 5, 'bee': 6, 'beetle': 7, 
+                 'bicycle': 8, 'bottle': 9, 'bowl': 10, 'boy': 11, 'bridge': 12, 
+                 'bus': 13, 'butterfly': 14, 'camel': 15, 'can': 16, 'castle': 17, 'caterpillar': 18, 'cattle': 19, 'chair': 20, 'chimpanzee': 21,
+                 'clock': 22, 'cloud': 23, 'cockroach': 24, 
+                 'couch': 25, 'crab': 26, 'crocodile': 27, 'cup': 28, 'dinosaur': 29, 'dolphin': 30, 'elephant': 31, 'flatfish': 32, 
+                 'forest': 33, 'fox': 34, 'girl': 35, 'hamster': 36, 'house': 37, 
+                 'kangaroo': 38, 'keyboard': 39, 'lamp': 40, 'lawn_mower': 41, 'leopard': 42, 'lion': 43, 'lizard': 44, 
+                 'lobster': 45, 'man': 46, 'maple_tree': 47, 'motorcycle': 48, 'mountain': 49, 
+                 'mouse': 50, 'mushroom': 51, 'oak_tree': 52, 'orange': 53, 'orchid': 54, 'otter': 55, 'palm_tree': 56, 'pear': 57, 
+                 'pickup_truck': 58, 'pine_tree': 59, 'plain': 60, 'plate': 61, 'poppy': 62, 
+                 'porcupine': 63, 'possum': 64, 'rabbit': 65, 'raccoon': 66, 'ray': 67, 'road': 68, 'rocket': 69, 
+                 'rose': 70, 'sea': 71, 'seal': 72, 'shark': 73, 'shrew': 74, 'skunk': 75, 'skyscraper': 76, 'snail': 77, 
+                 'snake': 78, 'spider': 79, 'squirrel': 80, 'streetcar': 81, 'sunflower': 82, 'sweet_pepper': 83, 'table': 84, 
+                 'tank': 85, 'telephone': 86, 'television': 87, 'tiger': 88, 'tractor': 89, 'train': 90, 
+                 'trout': 91, 'tulip': 92, 'turtle': 93, 'wardrobe': 94, 'whale': 95, 'willow_tree': 96, 'wolf': 97, 'woman': 98, 'worm': 99}
+        }
+        
+        cifar_hierachy = {
+            'aquatic_mammals' : ['beaver', 'dolphin', 'otter', 'seal', 'whale'],
+            'fish' : ['aquarium_fish', 'flatfish', 'ray', 'shark', 'trout'],
+            'flowers' : ['orchid', 'poppy', 'rose', 'sunflower', 'tulip'],
+            'food_containers' : ['bottle', 'bowl', 'can', 'cup', 'plate'],
+            'fruit_and_vegetables' : ['apple', 'mushroom', 'orange', 'pear', 'sweet_pepper'],
+            'household_electrical_devices' : ['clock', 'keyboard', 'lamp', 'telephone', 'television'],
+            'household_furniture' : ['bed', 'chair', 'couch', 'table', 'wardrobe'],
+            'insects' : ['bee', 'beetle', 'butterfly', 'caterpillar', 'cockroach'],
+            'large_carnivores' : ['bear', 'leopard', 'lion', 'tiger', 'wolf'],
+            'large_man_made_outdoor_things' : ['bridge', 'castle', 'house', 'road', 'skyscraper'],
+            'large_natural_outdoor_scenes' : ['cloud', 'forest', 'mountain', 'plain', 'sea'],
+            'large_omnivores_and_herbivores' : ['camel', 'cattle', 'chimpanzee', 'elephant', 'kangaroo'],
+            'medium_sized_mammals' : ['fox', 'porcupine', 'possum', 'raccoon', 'skunk'],
+            'non_insect_invertebrates' : ['crab', 'lobster', 'snail', 'spider', 'worm'],
+            'people' : ['baby', 'boy', 'girl', 'man', 'woman'],
+            'reptiles' : ['crocodile', 'dinosaur', 'lizard', 'snake', 'turtle'],
+            'small_mammals' :['hamster', 'mouse', 'rabbit', 'shrew', 'squirrel'],
+            'trees' : ['maple_tree', 'oak_tree', 'palm_tree', 'pine_tree', 'willow_tree'],
+            'vehicles_1' : ['bicycle', 'bus', 'motorcycle', 'pickup_truck', 'train'],
+            'vehicles_2' : ['lawn_mower', 'rocket', 'streetcar', 'tank', 'tractor'],
+        }
+
+        tp_names = ['cifar100_tp_0', 'cifar100_tp_1']
+        return get_cifar_tp_info(cifar_classes,
+                                 cifar_hierachy,
+                                 tp_names)
+        
+class CIFAR100WeakAug(CIFAR100):
+    def __init__(self, data_dir):
+        super().__init__(data_dir)
+    
+    def get_transform_train(self):
+        return get_cifar_transform_train_weak_aug()
+
+class CIFAR100StrongAug(CIFAR100):
+    def __init__(self, data_dir):
+        super().__init__(data_dir)
+    
+    def get_transform_train(self):
+        return get_cifar_transform_train_strong_aug()
+
 
 class IndexFolder(torchvision.datasets.ImageFolder):
     def find_classes(self, directory):

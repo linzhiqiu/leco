@@ -25,6 +25,11 @@ SETUPS = {
         tp_buffers=[(2000, 500), (2000, 500)], # each element is a tuple of (train_set_size:int, val_set_size:int)
         replace=False
     ),
+    'cifar100_strongaug_train_2000_val_500' : Setup(
+        'CIFAR100StrongAug',
+        tp_buffers=[(2000, 500), (2000, 500)], # each element is a tuple of (train_set_size:int, val_set_size:int)
+        replace=False
+    ),
     # 'semi_inat_buffer_1000_380' : Setup(
     #     'SemiInat2021',
     #     tp_buffers=[
