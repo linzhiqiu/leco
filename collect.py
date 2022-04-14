@@ -18,6 +18,8 @@ import cl_mode
 from print_utils import get_exp_str_from_ema_decay
 from train import needs_redo
 
+LATEX_FORMAT = True
+
 argparser = argparse.ArgumentParser()
 argparser.add_argument("--data_dir", 
                         default='/scratch/leco/',
@@ -45,27 +47,27 @@ argparser.add_argument("--hparam_candidate",
 
 # For all CL modes
 # SEED_LIST = [None, 1, 10, 100, 1000]# TODO
-# SEED_LIST = [None]
-# PL_THRESHOLDS = train.PL_THRESHOLDS # TODO
-# RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
-# HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
-# FINETUNING = train.FINETUNING
-# CL_MODES = cl_mode.CL_MODES
-# PARTIAL_FEEDBACK_MODE=[None]
-# SEMI_SUPERVISED_ALG=[None] #TODO
-# TRAIN_MODE_LIST = configs.ALL_TRAIN_MODES['cifar'] # TODO
-
-
-# For SSL
-SEED_LIST = [None] #TODO
-PL_THRESHOLDS = [0.95]
+SEED_LIST = [None,]
+PL_THRESHOLDS = train.PL_THRESHOLDS # TODO
 RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
 HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
 FINETUNING = train.FINETUNING
-CL_MODES = ['use_new', 'use_both']
+CL_MODES = cl_mode.CL_MODES
 PARTIAL_FEEDBACK_MODE=[None]
-SEMI_SUPERVISED_ALG=["DistillHard", "DistillSoft", "Fixmatch", "PL", None] #TODO
-TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
+SEMI_SUPERVISED_ALG=[None] #TODO
+TRAIN_MODE_LIST = configs.ALL_TRAIN_MODES['cifar'] # TODO
+
+
+# For SSL
+# SEED_LIST = [None] #TODO
+# PL_THRESHOLDS = [0.95]
+# RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
+# HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
+# FINETUNING = train.FINETUNING
+# CL_MODES = ['use_new', 'use_both']
+# PARTIAL_FEEDBACK_MODE=[None]
+# SEMI_SUPERVISED_ALG=["DistillHard", "DistillSoft", "Fixmatch", "PL", None] #TODO
+# TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
 
 # For Partial feedback
 # SEED_LIST = [None] #TODO
@@ -90,6 +92,81 @@ TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_li
 # SEMI_SUPERVISED_ALG=["DistillHard", "DistillSoft", "Fixmatch", "PL", None] #TODO
 # TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
 
+# For SSL + single head
+# SEED_LIST = [None] #TODO
+# PL_THRESHOLDS = [0.95]
+# RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
+# HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
+# FINETUNING = train.FINETUNING
+# CL_MODES = ['use_new']
+# PARTIAL_FEEDBACK_MODE=['single_head']
+# SEMI_SUPERVISED_ALG=["DistillHard", "DistillSoft", "Fixmatch", "PL", None] #TODO
+# TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
+
+# # For SSL + single head/two head/None + use_new_fine_for_coarse
+# SEED_LIST = [None] #TODO
+# PL_THRESHOLDS = [0.95]
+# RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
+# HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
+# FINETUNING = train.FINETUNING
+# CL_MODES = ['use_new_fine_for_coarse']
+# PARTIAL_FEEDBACK_MODE=['single_head', 'two_head', None]
+# SEMI_SUPERVISED_ALG=["DistillHard", "DistillSoft", "Fixmatch", "PL", None] #TODO
+# TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
+
+# For SSL + single head/two head/None + use_new
+# SEED_LIST = [None, 1, 10, 100, 1000] #TODO
+# PL_THRESHOLDS = [0.95]
+# RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
+# HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
+# FINETUNING = train.FINETUNING
+# CL_MODES = ['use_new']
+# PARTIAL_FEEDBACK_MODE=['single_head', 'two_head', None]
+# SEMI_SUPERVISED_ALG=["DistillHard", "DistillSoft", "Fixmatch", "PL", None] #TODO
+# TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
+
+# # For SSL + single head/two head/None + use_new_fine_for_coarse
+# SEED_LIST = [None, 1, 10, 100, 1000] #TODO
+# PL_THRESHOLDS = [0.95]
+# RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
+# HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
+# FINETUNING = train.FINETUNING
+# CL_MODES = ['use_new_fine_for_coarse']
+# PARTIAL_FEEDBACK_MODE=['single_head', 'two_head', None]
+# SEMI_SUPERVISED_ALG=["DistillHard", "DistillSoft", "Fixmatch", "PL", None] #TODO
+# TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
+
+# # For SSL + single head/two head/None + use_new_fine_for_partial_feedback_only
+# SEED_LIST = [None, 1, 10, 100, 1000] #TODO
+SEED_LIST = [None]  # TODO
+PL_THRESHOLDS = [0.95]
+RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
+HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
+FINETUNING = train.FINETUNING
+CL_MODES = ['use_new_fine_for_partial_feedback_only']
+PARTIAL_FEEDBACK_MODE=['single_head', 'two_head', None]
+SEMI_SUPERVISED_ALG=["DistillHard", "DistillSoft", "Fixmatch", "PL", None] #TODO
+TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
+
+# Upper bound
+# SEED_LIST = [None, 1, 10, 100, 1000] #TODO
+# PL_THRESHOLDS = [None]
+# RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
+# HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
+# FINETUNING = train.FINETUNING
+# CL_MODES = ['use_both']
+# PARTIAL_FEEDBACK_MODE=[None]
+# SEMI_SUPERVISED_ALG=[None] #TODO
+# TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
+
+def latex_str(s):
+    # $89.76\%\pm0.48\%$
+    # s = "54.98%+-1.01%"
+    mean, std = s.split("+-")
+    mean = float(mean.strip("%"))
+    std = float(std.strip("%"))
+    final_str = f"${mean:.2f}\%\pm{std:.2f}\%$"
+    return final_str
 
 def mean_std_from_dict(lst_of_dict, key):
     lst = np.array([d[key] for d in lst_of_dict])
@@ -158,7 +235,7 @@ def save_all_results(print_result_dir, result_dict, setup_mode, all_tp_info):
         
         with open(tp_file, "w+") as file:
             file.write(tabulate(all_rows, headers=all_headers, tablefmt='orgtbl'))
-            print(f"Save at {tp_file}")
+            # print(f"Save at {tp_file}")
 
 def save_avg_results(print_result_dir, result_dict, setup_mode, all_tp_info):
     save_dir = os.path.join(print_result_dir, setup_mode, "avg")
@@ -198,7 +275,7 @@ def save_avg_results(print_result_dir, result_dict, setup_mode, all_tp_info):
         
         with open(tp_file, "w+") as file:
             file.write(tabulate(all_rows, headers=all_headers, tablefmt='orgtbl'))
-            print(f"Save at {tp_file}")
+            # print(f"Save at {tp_file}")
 
 def save_best_results(print_result_dir, result_dict, setup_mode, all_tp_info):
     save_dir = os.path.join(print_result_dir, setup_mode, "best")
@@ -233,7 +310,7 @@ def save_best_results(print_result_dir, result_dict, setup_mode, all_tp_info):
         
         with open(tp_file, "w+") as file:
             file.write(tabulate(all_rows, headers=all_headers, tablefmt='orgtbl'))
-            print(f"Save at {tp_file}")
+            # print(f"Save at {tp_file}")
 
 def prepare_scripts(data_dir, result_dir, model_save_dir, setup_mode, train_mode_str, hparam_candidate, seed_list, ema_decay):
     scripts = []
@@ -337,14 +414,19 @@ def save_t_1_res(print_result_dir_time_1, t_1_res):
         t_0_epoch = get_mean_std_from_dict(t_0_result['best_epoch'], formatter="f")
         t_0_train_acc = get_mean_std_from_dict(t_0_result['train_acc'])
         t_0_test_acc = get_mean_std_from_dict(t_0_result['test_acc'])
-        row += [t_1_best_hparam, t_1_epoch, t_1_train_acc, t_1_test_acc]
-        row += [t_1_mask_rate, t_1_impurity, t_1_coarse_accuracy, t_1_coarse_accuracy_masked, t_1_mask_rate_filtered, t_1_impurity_filtered]
-        row += [t_0_best_hparam, t_0_epoch, t_0_train_acc, t_0_test_acc]
+        if LATEX_FORMAT:
+            row += [t_1_best_hparam, t_1_epoch, latex_str(t_1_train_acc), latex_str(t_1_test_acc)]
+            row += [latex_str(t_1_mask_rate), latex_str(t_1_impurity), latex_str(t_1_coarse_accuracy), latex_str(t_1_coarse_accuracy_masked), latex_str(t_1_mask_rate_filtered), latex_str(t_1_impurity_filtered)]
+            row += [t_0_best_hparam, t_0_epoch, latex_str(t_0_train_acc), latex_str(t_0_test_acc)]
+        else:
+            row += [t_1_best_hparam, t_1_epoch, t_1_train_acc, t_1_test_acc]
+            row += [t_1_mask_rate, t_1_impurity, t_1_coarse_accuracy, t_1_coarse_accuracy_masked, t_1_mask_rate_filtered, t_1_impurity_filtered]
+            row += [t_0_best_hparam, t_0_epoch, t_0_train_acc, t_0_test_acc]
         all_rows.append(row)
     
     with open(write_path, "w+") as file:
         file.write(tabulate(all_rows, headers=all_headers, tablefmt='orgtbl'))
-        print(f"Save at {write_path}")
+        # print(f"Save at {write_path}")
 
 def gather_exp(data_dir: str,
                result_dir: str,
@@ -462,7 +544,7 @@ def gather_exp(data_dir: str,
                 # write the results
                 if not train_mode_str in result_dict[setup_mode]:
                     result_dict[setup_mode][train_mode_str] = []
-                print(f"For setup {setup_mode}, train mode {train_mode_str}, tp 0, the best hparam is {best_hparam_str} with test acc {best_test_acc_mean}")
+                # print(f"For setup {setup_mode}, train mode {train_mode_str}, tp 0, the best hparam is {best_hparam_str} with test acc {best_test_acc_mean}")
                 hparam_strs += [best_hparam_str]
                 result_dict[setup_mode][train_mode_str].append({
                     'tp_idx' : 0,
@@ -500,7 +582,7 @@ def gather_exp(data_dir: str,
                 if cl_mode in ['use_old', 'use_both']:
                     partial_feedback_mode_list = [None]
                     semi_supervised_alg_list = [None]
-                elif cl_mode in ['use_new']:
+                elif cl_mode in ['use_new', 'use_new_fine_for_coarse', 'use_new_fine_for_partial_feedback_only']:
                     partial_feedback_mode_list = PARTIAL_FEEDBACK_MODE
                     semi_supervised_alg_list = SEMI_SUPERVISED_ALG
                 else:
@@ -667,7 +749,7 @@ def gather_exp(data_dir: str,
                                             res = [configuration_dict_as_key, t_0_result, t_0_best_hparam, t_1_result, t_1_best_hparam]
                                             t_1_res.append(res)
                                             # all_t_1_res.append(res)
-                                            print(f"For setup {setup_mode}, train mode {train_mode_str}, tp 1, config {configuration_dict_as_key}, the best hparam is {best_hparam_str} with test acc {best_test_acc_mean}")
+                                            # print(f"For setup {setup_mode}, train mode {train_mode_str}, tp 1, config {configuration_dict_as_key}, the best hparam is {best_hparam_str} with test acc {best_test_acc_mean}")
                                         else:
                                             # prepare scripts for this tp_idx
                                             current_scripts = prepare_scripts_for_time_1(
@@ -689,7 +771,7 @@ def gather_exp(data_dir: str,
                                                 finetuning_mode=finetuning_mode,
                                             )
                                             scripts_to_run += current_scripts
-                                            print(f"Setup {setup_mode}: {len(current_scripts)} scripts for train mode {train_mode_str} and config {configuration_dict_as_key}.")
+                                            # print(f"Setup {setup_mode}: {len(current_scripts)} scripts for train mode {train_mode_str} and config {configuration_dict_as_key}.")
                                             break
                         
                         # TODO: Fix the scripts

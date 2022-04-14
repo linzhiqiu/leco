@@ -1,7 +1,8 @@
 from typing import List
 
 ARCHS = [
-    'wideres_28_2'
+    'wideres_28_2',
+    'resnet50'
 ]
 
 PRETRAINED_MODES = [
@@ -82,6 +83,27 @@ CIFAR_MODES = {
     "wideres_28_2_moco_v2_stl10_0_finetune_pt_linear_1_freeze_prev_linear" : TrainMode(
         "wideres_28_2",
         'moco_v2_stl10',
+        [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'linear'),]
+    ),
+    # Resnet50 for inat
+    "resnet50_scratch_0_finetune_pt_linear_1_finetune_pt_linear" : TrainMode(
+        "resnet50",
+        'scratch',
+        [Phase('finetune_pt', 'linear'), Phase('finetune_pt', 'linear'),]
+    ),
+    "resnet50_scratch_0_finetune_pt_linear_1_finetune_prev_linear" : TrainMode(
+        "resnet50",
+        'scratch',
+        [Phase('finetune_pt', 'linear'),Phase('finetune_prev', 'linear'),]
+    ),
+    "resnet50_scratch_0_finetune_pt_linear_1_freeze_pt_linear" : TrainMode(
+        'resnet50',
+        'scratch',
+        [Phase('finetune_pt', 'linear'), Phase('freeze_pt', 'linear'),]
+    ),
+    "resnet50_scratch_0_finetune_pt_linear_1_freeze_prev_linear" : TrainMode(
+        'resnet50',
+        'scratch',
         [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'linear'),]
     ),
 }

@@ -10,6 +10,7 @@ def needs_redo(
         finetuning_mode=None,
         ema_decay=0.999
     ):
+    return False
     if semi_supervised_alg and hierarchical_ssl in ['conditioning', 'filtering_conditioning']:
         return True
     if semi_supervised_alg == 'Fixmatch':
@@ -80,7 +81,7 @@ HIERARCHICAL_SEMI_SUPERVISION = [
     None, # Ignoring the coarse label information for history samples
     'filtering', # Filter out history samples with wrong predicted coarse-label
     'conditioning', # Enforce the pseudo-label to condition only on fine-labels belonging to ground truth coarse-label
-    'filtering_conditioning', # filtering + conditioning
+    # 'filtering_conditioning', # filtering + conditioning
 ]
 
 FINETUNING = [
@@ -563,7 +564,9 @@ def train_semi_supervised(
         ### Training Phase ###
         model.train()
         loader = loaders['labeled']
-        unlabeled_loader_iter = iter(loaders['unlabeled'])
+        # unlabeled_loader_iter = iter(loaders['unlabeled'])
+        unlabeled_loader_ssl_iter = iter(loaders['unlabeled_ssl'])
+        unlabeled_loader_partial_feedback_iter = iter(loaders['unlabeled_partial_feedback'])
         if use_both_weak_and_strong:
             weak_and_strong_loader_iter = iter(loaders['unlabeled_weak_strong'])
         counter = { # stats this epoch
@@ -579,7 +582,8 @@ def train_semi_supervised(
         running_loss_coarse = 0.0
         running_corrects = 0.0
         count = 0
-        count_unlabeled = 0
+        count_unlabeled_ssl = 0
+        count_unlabeled_partial_feedback = 0
         
         # for batch, data in enumerate(loader):
         p_bar = tqdm(range(eval_steps))
@@ -594,14 +598,27 @@ def train_semi_supervised(
             labeled_labels = labeled_labels[tp_idx].to(device)
             count += labeled_inputs.size(0)
             
+            # try:
+            #     unlabeled_inputs, unlabeled_labels = unlabeled_loader_iter.next()
+            # except:
+            #     unlabeled_loader_iter = iter(loaders['unlabeled'])
+            #     unlabeled_inputs, unlabeled_labels = unlabeled_loader_iter.next()
             try:
-                unlabeled_inputs, unlabeled_labels = unlabeled_loader_iter.next()
+                unlabeled_inputs_ssl, unlabeled_labels_ssl = unlabeled_loader_ssl_iter.next()
             except:
-                unlabeled_loader_iter = iter(loaders['unlabeled'])
-                unlabeled_inputs, unlabeled_labels = unlabeled_loader_iter.next()
+                unlabeled_loader_ssl_iter = iter(loaders['unlabeled_ssl'])
+                unlabeled_inputs_ssl, unlabeled_labels_ssl = unlabeled_loader_ssl_iter.next()
             
-            count_unlabeled += unlabeled_inputs.size(0)
-            unlabeled_inputs = unlabeled_inputs.to(device)
+            try:
+                unlabeled_inputs_partial_feedback, unlabeled_labels_partial_feedback = unlabeled_loader_partial_feedback_iter.next()
+            except:
+                unlabeled_loader_partial_feedback_iter = iter(loaders['unlabeled_partial_feedback'])
+                unlabeled_inputs_partial_feedback, unlabeled_labels_partial_feedback = unlabeled_loader_partial_feedback_iter.next()
+            
+            count_unlabeled_ssl += unlabeled_inputs_ssl.size(0)
+            count_unlabeled_partial_feedback += unlabeled_inputs_partial_feedback.size(0)
+            unlabeled_inputs_ssl = unlabeled_inputs_ssl.to(device)
+            unlabeled_inputs_partial_feedback = unlabeled_inputs_partial_feedback.to(device)
             
             if use_both_weak_and_strong:
                 try:
@@ -612,8 +629,8 @@ def train_semi_supervised(
                 
                 w_s_unlabeled_inputs[0] = w_s_unlabeled_inputs[0].to(device)
                 w_s_unlabeled_inputs[1] = w_s_unlabeled_inputs[1].to(device)
-                assert unlabeled_inputs.size(0) == w_s_unlabeled_inputs[0].size(0)
-                assert unlabeled_inputs.size(0) == w_s_unlabeled_inputs[1].size(0)
+                assert unlabeled_inputs_ssl.size(0) == w_s_unlabeled_inputs[0].size(0)
+                assert unlabeled_inputs_ssl.size(0) == w_s_unlabeled_inputs[1].size(0)
 
             optimizer.zero_grad()
 
@@ -624,21 +641,21 @@ def train_semi_supervised(
                 labeled_loss = l_loss_func(labeled_outputs, labeled_labels)
                 loss = labeled_loss
                 
-                unlabeled_outputs = model(unlabeled_inputs)
-                coarse_loss = coarse_loss_func(unlabeled_outputs, unlabeled_labels[tp_idx-1].cuda())
+                unlabeled_outputs_partial_feedback = model(unlabeled_inputs_partial_feedback)
+                coarse_loss = coarse_loss_func(unlabeled_outputs_partial_feedback, unlabeled_labels_partial_feedback[tp_idx-1].cuda())
                 # import pdb; pdb.set_trace()
                 ssl_stats, ssl_loss = ssl_loss_func(
                                             model_single_head,
-                                            unlabeled_inputs if not use_both_weak_and_strong else w_s_unlabeled_inputs,
-                                            unlabeled_labels if not use_both_weak_and_strong else w_s_unlabeled_labels
+                                            unlabeled_inputs_ssl if not use_both_weak_and_strong else w_s_unlabeled_inputs,
+                                            unlabeled_labels_ssl if not use_both_weak_and_strong else w_s_unlabeled_labels
                                         )
                 counter = {
                     k : torch.cat([counter[k], ssl_stats[k]], dim=1)
                     for k in ssl_stats
                 }
                 loss = loss + ssl_loss + coarse_loss
-                running_loss_coarse += float(coarse_loss) * unlabeled_inputs.size(0)
-                running_loss_ssl = float(ssl_loss) * unlabeled_inputs.size(0)
+                running_loss_coarse += float(coarse_loss) * unlabeled_inputs_partial_feedback.size(0)
+                running_loss_ssl = float(ssl_loss) * unlabeled_inputs_ssl.size(0)
 
                 loss.backward()
                 optimizer.step()
@@ -649,10 +666,10 @@ def train_semi_supervised(
             # statistics
             running_loss += labeled_loss.item() * labeled_inputs.size(0)
             running_corrects += torch.sum(labeled_preds == labeled_labels.data)
-            if count_unlabeled > 0:
+            if count_unlabeled_ssl > 0:
                 auxilary_str = "Coarse: {coarse_loss_to_print:.4f}. SSL: {ssl_loss_to_print:.4f}.".format(
-                    coarse_loss_to_print=float(running_loss_coarse)/count_unlabeled,
-                    ssl_loss_to_print=float(running_loss_ssl)/count_unlabeled
+                    coarse_loss_to_print=float(running_loss_coarse)/count_unlabeled_partial_feedback,
+                    ssl_loss_to_print=float(running_loss_ssl)/count_unlabeled_ssl
                 )
             else:
                 auxilary_str = ""
@@ -764,13 +781,34 @@ def get_dataset(train_val_subsets,
     if cl_mode == 'use_new':
         labeled_set = train_val_subsets[tp_idx][0]
         val_set = train_val_subsets[tp_idx][1]
+        unlabeled_set = train_val_subsets[0][0]
+        unlabeled_set = {'partial_feedback' : copy.deepcopy(unlabeled_set),
+                         'ssl' : copy.deepcopy(unlabeled_set)}
     elif cl_mode == 'use_old':
         labeled_set = train_val_subsets[0][0]
         val_set = train_val_subsets[0][1]
+        unlabeled_set = train_val_subsets[0][0]
+        unlabeled_set = {'partial_feedback' : copy.deepcopy(unlabeled_set),
+                         'ssl' : copy.deepcopy(unlabeled_set)}
     elif cl_mode == 'use_both':
         labeled_set = ConcatHierarchyDataset([train_val_subsets[i][0] for i in range(tp_idx+1)])
         val_set = ConcatHierarchyDataset([train_val_subsets[i][1] for i in range(tp_idx+1)])
-    unlabeled_set = train_val_subsets[0][0]
+        unlabeled_set = train_val_subsets[0][0]
+        unlabeled_set = {'partial_feedback' : copy.deepcopy(unlabeled_set),
+                         'ssl' : copy.deepcopy(unlabeled_set)}
+    elif cl_mode == 'use_new_fine_for_coarse':
+        labeled_set = train_val_subsets[tp_idx][0]
+        val_set = train_val_subsets[tp_idx][1]
+        unlabeled_set = ConcatHierarchyDataset([train_val_subsets[i][0] for i in range(tp_idx+1)])
+        unlabeled_set = {'partial_feedback' : copy.deepcopy(unlabeled_set),
+                         'ssl' : copy.deepcopy(unlabeled_set)}
+    elif cl_mode == 'use_new_fine_for_partial_feedback_only':
+        labeled_set = train_val_subsets[tp_idx][0]
+        val_set = train_val_subsets[tp_idx][1]
+        unlabeled_set_partial_feedback = ConcatHierarchyDataset([copy.deepcopy(train_val_subsets[i][0]) for i in range(tp_idx+1)])
+        unlabeled_set_ssl = copy.deepcopy(train_val_subsets[0][0])
+        unlabeled_set = {'partial_feedback' : unlabeled_set_partial_feedback,
+                         'ssl' : unlabeled_set_ssl}
     return labeled_set, unlabeled_set, val_set
 
 def get_loaders(labeled_set,
@@ -783,20 +821,27 @@ def get_loaders(labeled_set,
     loaders = {}
     batch_size = int(batch_size / (1.0 + ratio_unlabeled_to_labeled))
     unlabeled_batch_size = int(batch_size * ratio_unlabeled_to_labeled)
-    loaders['unlabeled'] = torch.utils.data.DataLoader(
-                                unlabeled_set,
-                                batch_size=unlabeled_batch_size,
-                                shuffle=True,
-                                num_workers=workers,
-                                drop_last=True
-                            )
+    loaders['unlabeled_partial_feedback'] = torch.utils.data.DataLoader(
+                                                unlabeled_set['partial_feedback'],
+                                                batch_size=unlabeled_batch_size,
+                                                shuffle=True,
+                                                num_workers=workers,
+                                                drop_last=True
+                                            )
+    loaders['unlabeled_ssl'] = torch.utils.data.DataLoader(
+                                   unlabeled_set['ssl'],
+                                   batch_size=unlabeled_batch_size,
+                                   shuffle=True,
+                                   num_workers=workers,
+                                   drop_last=True
+                               )
     print(f"Labeled batch size is {batch_size}; unlabeled is {unlabeled_batch_size}")
     
     # print("Need to check whether the new set has new transform + old set has old transform!")
-    assert isinstance(unlabeled_set, setups.HierarchyDataset) or \
-           isinstance(unlabeled_set, setups.SubsetHierarchyDataset) or \
-           isinstance(unlabeled_set, setups.ConcatHierarchyDataset)
-    unlabeled_set_weak_strong = copy.deepcopy(unlabeled_set)
+    assert isinstance(unlabeled_set['ssl'], setups.HierarchyDataset) or \
+           isinstance(unlabeled_set['ssl'], setups.SubsetHierarchyDataset) or \
+           isinstance(unlabeled_set['ssl'], setups.ConcatHierarchyDataset)
+    unlabeled_set_weak_strong = copy.deepcopy(unlabeled_set['ssl'])
     unlabeled_set_weak_strong.update_transform(unlabeled_set_weak_strong.weak_strong_transform)
     loaders['unlabeled_weak_strong'] = torch.utils.data.DataLoader(
                                             unlabeled_set_weak_strong,
@@ -952,7 +997,6 @@ def start_training_semi_supervised(model,
                           testset,
                           batch_size,
                           workers,
-                        #   use_both_weak_and_strong=use_both_weak_and_strong,
                           ratio_unlabeled_to_labeled=ratio_unlabeled_to_labeled)
 
     edge_matrix = edge_matrix.to(device)

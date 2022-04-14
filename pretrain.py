@@ -156,8 +156,8 @@ def get_fc_size(arch):
         return 128
     # elif arch == 'resnet18':
     #     embedding_dim = 512
-    # elif arch == 'resnet50':
-    #     embedding_dim = 2048
+    elif arch == 'resnet50':
+        return 2048
     else:
         raise NotImplementedError()
 

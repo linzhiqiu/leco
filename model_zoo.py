@@ -111,3 +111,6 @@ def wideres_28_2():
                                num_classes=10)
     network.fc = torch.nn.Identity()
     return network
+
+def resnet50():
+    return torchvision.models.resnet50(pretrained=False)
