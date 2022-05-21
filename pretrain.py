@@ -74,6 +74,10 @@ def pretrain(data_dir,
         model = getattr(model_zoo, arch)()
         torch.save(model, checkpoint_path)
         return
+    elif args.pretrain == 'imagenet':
+        model = getattr(model_zoo, arch+"_imagenet")()
+        torch.save(model, checkpoint_path)
+        return
     
     # TODO: Fix the self_supervised library
     if args.pretrain == 'moco_v2_stl10':
@@ -143,6 +147,8 @@ def load_from_checkpoint(model_save_dir,
                                           arch,
                                           pretrain)
     if pretrain == 'scratch':
+        return torch.load(checkpoint_path)
+    elif pretrain == 'imagenet':
         return torch.load(checkpoint_path)
     elif pretrain in ['moco_v2_stl10', 'byol_stl10', 'simclr_stl10']:
         model = MoCoMethod.load_from_checkpoint(checkpoint_path)

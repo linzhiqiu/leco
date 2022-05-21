@@ -49,21 +49,34 @@ argparser.add_argument("--hparam_candidate",
 #                         choices=configs.ALL_TRAIN_MODES.keys(),
 #                         help="The train mode candidates for this setup")
 
-SEED_LIST = [None, 1, 10, 100, 1000]
-PL_THRESHOLDS = train.PL_THRESHOLDS
+# SEED_LIST = [None, 1, 10, 100, 1000]
+# PL_THRESHOLDS = train.PL_THRESHOLDS
+# RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
+# HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
+# FINETUNING = train.FINETUNING
+# CL_MODES = cl_mode.CL_MODES
+# # CL_MODES = ['use_new']
+# PARTIAL_FEEDBACK_MODE=train.PARTIAL_FEEDBACK_MODE
+# # SEMI_SUPERVISED_ALG=train.SEMI_SUPERVISED_ALG
+# SEMI_SUPERVISED_ALG=[None] #TODO
+# # SEMI_SUPERVISED_ALG=["DistillHard"] #TODO
+# PARTIAL_FEEDBACK_MODE=[None] #TODO
+# TRAIN_MODE_LIST = configs.ALL_TRAIN_MODES['cifar'] # TODO
+# # TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear',
+# #                    'wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_pt_linear']
+# # For SSL + single head/two head/None + use_t_1_for_multi_task
+SEED_LIST = [None, 1, 10, 100, 1000] #TODO
+# SEED_LIST = [None]  # TODO
+PL_THRESHOLDS = [0.95]
 RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
 HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
 FINETUNING = train.FINETUNING
-CL_MODES = cl_mode.CL_MODES
-# CL_MODES = ['use_new']
-PARTIAL_FEEDBACK_MODE=train.PARTIAL_FEEDBACK_MODE
-# SEMI_SUPERVISED_ALG=train.SEMI_SUPERVISED_ALG
-SEMI_SUPERVISED_ALG=[None] #TODO
-# SEMI_SUPERVISED_ALG=["DistillHard"] #TODO
-PARTIAL_FEEDBACK_MODE=[None] #TODO
-TRAIN_MODE_LIST = configs.ALL_TRAIN_MODES['cifar'] # TODO
-# TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear',
-#                    'wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_pt_linear']
+CL_MODES = ['use_t_1_for_multi_task']
+# PARTIAL_FEEDBACK_MODE=['single_head', 'two_head', None]
+PARTIAL_FEEDBACK_MODE = ['single_head', None]
+# SEMI_SUPERVISED_ALG=["DistillSoft", "Fixmatch", None] #TODO
+SEMI_SUPERVISED_ALG=["PreconDistillHard", "PreconDistillSoft", "DistillHard", "DistillSoft", "Fixmatch", "PL", None] #TODO
+TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
 
 
 def mean_std_from_dict(lst_of_dict, key):

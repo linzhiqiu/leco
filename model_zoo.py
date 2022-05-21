@@ -114,3 +114,6 @@ def wideres_28_2():
 
 def resnet50():
     return torchvision.models.resnet50(pretrained=False)
+
+def resnet50_imagenet():
+    return torchvision.models.resnet50(pretrained=True)

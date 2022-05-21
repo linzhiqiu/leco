@@ -21,17 +21,18 @@ class Fixmatch(SSLObjective):
         
         labels = self.put_on_device(labels, inputs_w.device)
         
-        outputs_w = self.calc_outputs(model, inputs_w)
-        probs_w = F.softmax(outputs_w, dim=1)
-        # probs_s = F.softmax(outputs_s, dim=1)
+        with torch.set_grad_enabled(False):
+            outputs_w = self.calc_outputs(model, inputs_w)
+            probs_w = F.softmax(outputs_w, dim=1)
+            # probs_s = F.softmax(outputs_s, dim=1)
+            
+            ssl_stats = self.calc_ssl_stats(probs_w, labels)
+            
+            filter_mask = self.calc_filter_mask(probs_w, labels)
         
-        ssl_stats = self.calc_ssl_stats(probs_w, labels)
-        
-        filter_mask = self.calc_filter_mask(probs_w, labels)
-        
-        conditioned_probs = self.condition_outputs_for_probs(outputs_w, labels)
-        pl_mask = self.calc_pl_mask(conditioned_probs)
-        final_mask = pl_mask & filter_mask
+            conditioned_probs = self.condition_outputs_for_probs(outputs_w, labels)
+            pl_mask = self.calc_pl_mask(conditioned_probs)
+            final_mask = pl_mask & filter_mask
         
         outputs_s = self.calc_outputs(model, inputs_s)
         # conditioned_log_probs = self.condition_outputs_for_log_probs(outputs_s, labels)

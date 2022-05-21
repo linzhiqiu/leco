@@ -2,7 +2,6 @@
 # python collect_last_epoch.py --data_dir /scratch/leco/ --hparam_candidate cifar --result_dir /data3/zhiqiul/leco_results/ --model_save_dir /data3/zhiqiul/self_supervised_models/wideres_28_2/ --ema_decay 0.999
 
 
-
 TP0_BEST_HPARAM = ['cifar10_lr_006_batch_128']
 
 
@@ -62,15 +61,15 @@ argparser.add_argument("--hparam_candidate",
 
 
 # For SSL
-SEED_LIST = [None] #TODO
-PL_THRESHOLDS = [0.95]
-RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
-HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
-FINETUNING = train.FINETUNING
-CL_MODES = ['use_new']
-PARTIAL_FEEDBACK_MODE=[None]
-SEMI_SUPERVISED_ALG=["DistillHard", "DistillSoft", "Fixmatch", "PL", None] #TODO
-TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
+# SEED_LIST = [None] #TODO
+# PL_THRESHOLDS = [0.95]
+# RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
+# HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
+# FINETUNING = train.FINETUNING
+# CL_MODES = ['use_new']
+# PARTIAL_FEEDBACK_MODE=[None]
+# SEMI_SUPERVISED_ALG=["DistillHard", "DistillSoft", "Fixmatch", "PL", None] #TODO
+# TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
 
 # For Partial feedback
 # SEED_LIST = [None] #TODO
@@ -83,6 +82,21 @@ TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_li
 # # SEMI_SUPERVISED_ALG=["DistillHard", "DistillSoft", "Fixmatch", "PL", ] #TODO
 # SEMI_SUPERVISED_ALG=[None]
 # TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
+
+# # For SSL + single head/two head/None + use_t_1_for_multi_task
+SEED_LIST = [None, 1, 10, 100, 1000] #TODO
+# SEED_LIST = [None]  # TODO
+PL_THRESHOLDS = [0.95]
+RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
+HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
+FINETUNING = train.FINETUNING
+CL_MODES = ['use_t_1_for_multi_task']
+# PARTIAL_FEEDBACK_MODE=['single_head', 'two_head', None]
+PARTIAL_FEEDBACK_MODE = ['single_head', None]
+# SEMI_SUPERVISED_ALG=["DistillSoft", "Fixmatch", None] #TODO
+# SEMI_SUPERVISED_ALG=["PreconDistillHard", "PreconDistillSoft", "DistillHard", "DistillSoft", "Fixmatch", "PL", None] #TODO
+SEMI_SUPERVISED_ALG=["DistillHard", "DistillSoft", "Fixmatch", "PL", None] #TODO
+TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
 
 
 def mean_std_from_dict(lst_of_dict, key):
@@ -152,7 +166,7 @@ def save_all_results(print_result_dir, result_dict, setup_mode, all_tp_info):
         
         with open(tp_file, "w+") as file:
             file.write(tabulate(all_rows, headers=all_headers, tablefmt='orgtbl'))
-            print(f"Save at {tp_file}")
+            # print(f"Save at {tp_file}")
 
 def save_avg_results(print_result_dir, result_dict, setup_mode, all_tp_info):
     save_dir = os.path.join(print_result_dir, setup_mode, "avg")
@@ -192,7 +206,7 @@ def save_avg_results(print_result_dir, result_dict, setup_mode, all_tp_info):
         
         with open(tp_file, "w+") as file:
             file.write(tabulate(all_rows, headers=all_headers, tablefmt='orgtbl'))
-            print(f"Save at {tp_file}")
+            # print(f"Save at {tp_file}")
 
 def save_best_results(print_result_dir, result_dict, setup_mode, all_tp_info):
     save_dir = os.path.join(print_result_dir, setup_mode, "best")
@@ -227,7 +241,7 @@ def save_best_results(print_result_dir, result_dict, setup_mode, all_tp_info):
         
         with open(tp_file, "w+") as file:
             file.write(tabulate(all_rows, headers=all_headers, tablefmt='orgtbl'))
-            print(f"Save at {tp_file}")
+            # print(f"Save at {tp_file}")
 
 def prepare_scripts(data_dir, result_dir, model_save_dir, setup_mode, train_mode_str, hparam_candidate, seed_list, ema_decay):
     scripts = []
@@ -338,7 +352,7 @@ def save_t_1_res(print_result_dir_time_1, t_1_res):
     
     with open(write_path, "w+") as file:
         file.write(tabulate(all_rows, headers=all_headers, tablefmt='orgtbl'))
-        print(f"Save at {write_path}")
+        # print(f"Save at {write_path}")
 
 def get_best_stats(stats, best_epoch):
     best_stat = {
@@ -462,7 +476,7 @@ def gather_exp(data_dir: str,
                 # write the results
                 if not train_mode_str in result_dict[setup_mode]:
                     result_dict[setup_mode][train_mode_str] = []
-                print(f"For setup {setup_mode}, train mode {train_mode_str}, tp 0, the best hparam is {best_hparam_str} with test acc {best_test_acc_mean}")
+                # print(f"For setup {setup_mode}, train mode {train_mode_str}, tp 0, the best hparam is {best_hparam_str} with test acc {best_test_acc_mean}")
                 hparam_strs += [best_hparam_str]
                 result_dict[setup_mode][train_mode_str].append({
                     'tp_idx' : 0,
@@ -500,7 +514,7 @@ def gather_exp(data_dir: str,
                 if cl_mode in ['use_old', 'use_both']:
                     partial_feedback_mode_list = [None]
                     semi_supervised_alg_list = [None]
-                elif cl_mode in ['use_new']:
+                elif cl_mode in ['use_new', 'use_t_1_for_multi_task']:
                     partial_feedback_mode_list = PARTIAL_FEEDBACK_MODE
                     semi_supervised_alg_list = SEMI_SUPERVISED_ALG
                 else:
@@ -511,7 +525,7 @@ def gather_exp(data_dir: str,
                             hierarchical_semi_supervision_list = HIERARCHICAL_SEMI_SUPERVISION
                             if semi_supervised_alg in ['Fixmatch', 'PL']:
                                 pl_thresholds_list = PL_THRESHOLDS
-                            elif semi_supervised_alg in ['DistillHard', 'DistillSoft']:
+                            elif semi_supervised_alg in ['DistillHard', 'DistillSoft', 'PreconDistillHard', 'PreconDistillSoft']:
                                 pl_thresholds_list = [None]
                             else:
                                 raise NotImplementedError()
@@ -661,9 +675,9 @@ def gather_exp(data_dir: str,
                                             t_0_result = result_dict[setup_mode][train_mode_str][0]['all_results'][best_hparam_list[0]]
                                             t_1_best_hparam = best_hparam_str
                                             t_1_result = all_results[t_1_best_hparam]
-                                            
-                                            t_1_res.append([configuration_dict_as_key, t_0_result, t_0_best_hparam, t_1_result, t_1_best_hparam])
-                                            print(f"For setup {setup_mode}, train mode {train_mode_str}, tp 1, config {configuration_dict_as_key}, the best hparam is {best_hparam_str} with test acc {best_test_acc_mean}")
+                                            res = [configuration_dict_as_key, t_0_result, t_0_best_hparam, t_1_result, t_1_best_hparam]
+                                            t_1_res.append(res)
+                                            # print(f"For setup {setup_mode}, train mode {train_mode_str}, tp 1, config {configuration_dict_as_key}, the best hparam is {best_hparam_str} with test acc {best_test_acc_mean}")
                                         else:
                                             # prepare scripts for this tp_idx
                                             current_scripts = prepare_scripts_for_time_1(
@@ -685,7 +699,7 @@ def gather_exp(data_dir: str,
                                                 finetuning_mode=finetuning_mode,
                                             )
                                             scripts_to_run += current_scripts
-                                            print(f"Setup {setup_mode}: {len(current_scripts)} scripts for train mode {train_mode_str} and config {configuration_dict_as_key}.")
+                                            # print(f"Setup {setup_mode}: {len(current_scripts)} scripts for train mode {train_mode_str} and config {configuration_dict_as_key}.")
                                             break
                         
                         # TODO: Fix the scripts

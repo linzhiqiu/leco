@@ -7,7 +7,7 @@ ARCHS = [
 
 PRETRAINED_MODES = [
     'scratch', # from scratch
-    'imgnet', # start from imagenet-pretrained weight, if exists
+    'imagenet', # start from imagenet-pretrained weight, if exists
     # Below are trained from github repo (with default parameters): https://github.com/untitled-ai/self_supervised
     'moco_v2_stl10', # start from moco_v2 pretrained on stl10, if exists
     'byol_stl10', # start from byol pretrained on stl10, if exists
@@ -85,33 +85,59 @@ CIFAR_MODES = {
         'moco_v2_stl10',
         [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'linear'),]
     ),
+}
+
+INAT_MODES = {
     # Resnet50 for inat
-    "resnet50_scratch_0_finetune_pt_linear_1_finetune_pt_linear" : TrainMode(
+    "resnet50_scratch_0_finetune_pt_linear_1_finetune_pt_linear": TrainMode(
         "resnet50",
         'scratch',
-        [Phase('finetune_pt', 'linear'), Phase('finetune_pt', 'linear'),]
+        [Phase('finetune_pt', 'linear'), Phase('finetune_pt', 'linear'), ]
     ),
-    "resnet50_scratch_0_finetune_pt_linear_1_finetune_prev_linear" : TrainMode(
+    "resnet50_scratch_0_finetune_pt_linear_1_finetune_prev_linear": TrainMode(
         "resnet50",
         'scratch',
-        [Phase('finetune_pt', 'linear'),Phase('finetune_prev', 'linear'),]
+        [Phase('finetune_pt', 'linear'), Phase('finetune_prev', 'linear'), ]
     ),
-    "resnet50_scratch_0_finetune_pt_linear_1_freeze_pt_linear" : TrainMode(
+    "resnet50_scratch_0_finetune_pt_linear_1_freeze_pt_linear": TrainMode(
         'resnet50',
         'scratch',
-        [Phase('finetune_pt', 'linear'), Phase('freeze_pt', 'linear'),]
+        [Phase('finetune_pt', 'linear'), Phase('freeze_pt', 'linear'), ]
     ),
-    "resnet50_scratch_0_finetune_pt_linear_1_freeze_prev_linear" : TrainMode(
+    "resnet50_scratch_0_finetune_pt_linear_1_freeze_prev_linear": TrainMode(
         'resnet50',
         'scratch',
-        [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'linear'),]
+        [Phase('finetune_pt', 'linear'), Phase('freeze_prev', 'linear'), ]
+    ),
+    # Resnet50 pre-trained imagenet for inat
+    "resnet50_imagenet_0_finetune_pt_linear_1_finetune_pt_linear": TrainMode(
+        "resnet50",
+        'imagenet',
+        [Phase('finetune_pt', 'linear'), Phase('finetune_pt', 'linear'), ]
+    ),
+    "resnet50_imagenet_0_finetune_pt_linear_1_finetune_prev_linear": TrainMode(
+        "resnet50",
+        'imagenet',
+        [Phase('finetune_pt', 'linear'), Phase('finetune_prev', 'linear'), ]
+    ),
+    "resnet50_imagenet_0_finetune_pt_linear_1_freeze_pt_linear": TrainMode(
+        'resnet50',
+        'imagenet',
+        [Phase('finetune_pt', 'linear'), Phase('freeze_pt', 'linear'), ]
+    ),
+    "resnet50_imagenet_0_finetune_pt_linear_1_freeze_prev_linear": TrainMode(
+        'resnet50',
+        'imagenet',
+        [Phase('finetune_pt', 'linear'), Phase('freeze_prev', 'linear'), ]
     ),
 }
 
 TRAIN_MODES = {
     **CIFAR_MODES,
+    **INAT_MODES,
 }
 
 ALL_TRAIN_MODES = {
     'cifar' : CIFAR_MODES,
+    'inat' : INAT_MODES
 }

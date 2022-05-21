@@ -40,7 +40,7 @@ from print_utils import get_exp_str_from_semi_args, \
 
 
 from typing import List
-from semi_supervised import DistillHard, DistillSoft, PseudoLabel, NoSSL, Fixmatch
+from semi_supervised import DistillHard, DistillSoft, PseudoLabel, NoSSL, Fixmatch, PreconDistillHard, PreconDistillSoft
 from tqdm import tqdm
 from ema import ModelEMA
 
@@ -62,6 +62,8 @@ SEMI_SUPERVISED_ALG = [
     'Fixmatch', # Fixmatch with hard thresholding
     'DistillHard', # Self-training with distillation (hard-label cross entropy)
     'DistillSoft', # Self-training with distillation (soft-label KL divergence)
+    'PreconDistillHard', # Preconditioning Teacher: Self-training with distillation (hard-label cross entropy)
+    'PreconDistillSoft', # Preconditioning Teacher: Self-training with distillation (soft-label KL divergence)
 ]
 
 PL_THRESHOLDS = [
@@ -353,6 +355,212 @@ def train(loaders,
                   for phase in phases}
     return model, acc_result, best_result, avg_results
 
+
+class ConditionalHead(torch.nn.Module):
+    def __init__(self, fc, edge_matrix):
+        super().__init__()
+        self.hidden_dim = fc.weight.shape[1]
+        self.parent_and_child_idx_to_leaf_idx = [] # self.parent_and_child_idx_to_leaf_idx[parent_idx][child_idx] = leaf_idx
+        self.num_parents = edge_matrix.shape[1]
+        self.num_leaves = edge_matrix.shape[0]
+        self.leaf_idx_to_child_idx = torch.zeros((self.num_leaves)).long() # self.leaf_idx_to_child_idx[leaf_idx] = child_idx
+        for parent_idx in range(self.num_parents):
+            child_num = int(edge_matrix.T[parent_idx].sum())
+            linear_layer = torch.nn.Linear(self.hidden_dim, child_num)
+            curr_leaves = torch.where(edge_matrix.T[parent_idx] == 1)[0]
+            self.parent_and_child_idx_to_leaf_idx.append(curr_leaves)
+            for child_idx, leaf_idx in enumerate(curr_leaves):
+                self.leaf_idx_to_child_idx[leaf_idx] = child_idx
+            setattr(self, f"fc{parent_idx}", linear_layer)
+        assert len(self.parent_and_child_idx_to_leaf_idx) == self.num_parents
+    
+    def forward(self, x):
+        return [getattr(self, f"fc{idx}")(x) for idx in range(self.num_parents)]
+
+# class MultiHead(torch.nn.Module):
+#     def __init__(self, list_of_fcs):
+#         super().__init__()
+#         self.list_of_fcs = list_of_fcs
+#         for idx, fc in enumerate(list_of_fcs):
+#             setattr(self, f"fc{idx}", fc)
+    
+#     def forward(self, x):
+#         return [getattr(self, f"fc{idx}")(x) for idx in range(len(self.list_of_fcs))]
+def test_precondition(test_loader,
+                      model,
+                      tp_idx):
+    model = model.to(device).eval()
+    criterion = torch.nn.NLLLoss(reduction='mean')
+    running_corrects = 0.
+    running_loss = 0.
+    count = 0
+
+    for batch, data in enumerate(test_loader):
+        inputs, labels = data
+        count += inputs.size(0)
+
+        inputs = inputs.to(device)
+        # labels = labels[tp_idx].to(device)
+
+        with torch.set_grad_enabled(False):
+            outputs = model(inputs)
+            preds = torch.LongTensor([model.fc.parent_and_child_idx_to_leaf_idx[parent_idx][torch.argmax(outputs[parent_idx][idx])]
+                                      for idx, parent_idx in enumerate(labels[0])])
+
+            loss = 0.0
+            for idx, (parent_idx, leaf_idx) in enumerate(zip(labels[0], labels[1])):
+                log_probability = torch.nn.functional.log_softmax(outputs[parent_idx][idx], dim=0)
+                loss += - log_probability[model.fc.leaf_idx_to_child_idx[leaf_idx]]
+            loss = loss / inputs.shape[0]
+
+        # statistics
+        running_corrects += torch.sum(preds == labels[tp_idx].data)
+        running_loss += loss.item() * inputs.size(0)
+        
+    avg_acc = float(running_corrects)/count
+    avg_loss = float(running_loss)/count
+    return avg_loss, avg_acc
+  
+
+def train_precondition(
+    loaders,
+    model,
+    optimizer,
+    scheduler,
+    epochs,
+    eval_steps,
+    tp_idx,
+    edge_matrix,
+    select_criterion='acc_per_epoch',
+    ema_decay=None):
+    
+    model.fc = ConditionalHead(model.fc, edge_matrix)
+    model = model.to(device)
+    if ema_decay != None:
+        ema_model = ModelEMA(model, ema_decay, device)
+    else:
+        ema_model = None
+    criterion = torch.nn.NLLLoss(reduction='mean')
+
+    avg_results = {'train': {'loss_per_epoch': [], 'acc_per_epoch': [],},
+                   'val':   {'loss_per_epoch': [], 'acc_per_epoch': []},
+                   'test':  {'loss_per_epoch': [], 'acc_per_epoch': []}}
+    phases = ['train', 'val', 'test']
+
+    # Save best model based on select_criterion
+    best_result = {
+                #    'best_loss': None, # overall loss at best epoch
+                #    'best_acc': 0, # overall acc at best epoch
+                   'best_value' : None, # Best value of select_criterion
+                   'best_epoch': None,
+                   'best_model': None,
+                   'best_criterion':select_criterion}
+    
+    best_model = None
+    for epoch in range(0, epochs):
+    # for epoch in range(0, 1):
+        print(f"Epoch {epoch}")
+        ### Training phase ###
+        model.train()
+
+        running_loss = 0.0
+        running_corrects = 0. # Overall correct count
+        count = 0
+
+        loader_iter = iter(loaders['train'])
+        p_bar = tqdm(range(eval_steps))
+        for batch in range(eval_steps):
+            try:
+                data = loader_iter.next()
+            except:
+                loader_iter = iter(loaders['train'])
+                data = loader_iter.next()
+
+            inputs, labels = data
+            count += inputs.size(0)
+
+            inputs = inputs.to(device)
+            # labels = labels[tp_idx].to(device)
+
+            optimizer.zero_grad()
+
+            with torch.set_grad_enabled(True):
+                outputs = model(inputs)
+                # outputs = [outputs[parent_idx] for parent_idx in labels[0]]
+                preds = torch.LongTensor([model.fc.parent_and_child_idx_to_leaf_idx[parent_idx][torch.argmax(outputs[parent_idx][idx])]
+                                          for idx, parent_idx in enumerate(labels[0])])
+
+                loss = 0.0
+                for idx, (parent_idx, leaf_idx) in enumerate(zip(labels[0], labels[1])):
+                    log_probability = torch.nn.functional.log_softmax(outputs[parent_idx][idx], dim=0)
+                    loss += - log_probability[model.fc.leaf_idx_to_child_idx[leaf_idx]]
+                loss = loss / inputs.shape[0]
+                
+                loss.backward()
+                optimizer.step()
+                scheduler.step()
+                if ema_decay:
+                    ema_model.update(model)
+            
+            # statistics
+            running_loss += loss.item() * inputs.size(0)
+            running_corrects += torch.sum(preds == labels[tp_idx].data)
+            p_bar.set_description("Train Epoch: {epoch}/{epochs:4}. Iter: {batch:4}/{iter:4}. LR: {lr:.4f}. Loss: {loss:.4f}.".format(
+                epoch=epoch + 1,
+                epochs=epochs,
+                batch=batch + 1,
+                iter=eval_steps,
+                lr=scheduler.get_last_lr()[0],
+                loss=float(running_loss)/count))
+            p_bar.update()
+
+        p_bar.close()
+        avg_loss = float(running_loss)/count
+        avg_acc = float(running_corrects)/count
+        avg_results['train']['loss_per_epoch'].append(avg_loss)
+        avg_results['train']['acc_per_epoch'].append(avg_acc)
+        print(f"Epoch {epoch}: Average train Loss {avg_loss:.4f}, Acc {avg_acc:.2%}")
+        ### End of Training phase ###
+        
+        ### Val+Test phase ###
+        if ema_model:
+            eval_model = ema_model.ema # keep a pointer to current model for train
+        else:
+            eval_model = model
+
+        val_loss, val_acc = test_precondition(loaders['val'], eval_model, tp_idx)
+        avg_results['val']['loss_per_epoch'].append(val_loss)
+        avg_results['val']['acc_per_epoch'].append(val_acc)
+        curr_value = avg_results['val'][select_criterion][-1]
+        if best_result['best_value'] == None or is_better(select_criterion, curr_value, best_result['best_value']):
+            print(
+                f"Best val {select_criterion} at epoch {epoch} being {curr_value}")
+            best_result['best_epoch'] = epoch
+            # best_result['best_acc'] = val_acc
+            # best_result['best_loss'] = val_loss
+            best_result['best_value'] = curr_value
+            best_model = copy.deepcopy(eval_model.state_dict())
+            if tp_idx in SAVE_BEST_MODEL_FOR_TIME:
+                best_result['best_model'] = best_model
+        print(f"Epoch {epoch}: Average val Loss {val_loss:.4f}, Acc {val_acc:.2%}")
+        
+        test_loss, test_acc = test_precondition(loaders['test'], eval_model, tp_idx)
+        avg_results['test']['loss_per_epoch'].append(test_loss)
+        avg_results['test']['acc_per_epoch'].append(test_acc)
+        print(f"Epoch {epoch}: Average test Loss {test_loss:.4f}, Acc {test_acc:.2%}")
+        ### End of Val+Test phase ###
+        print()
+    print(f"Test Accuracy (for best val {select_criterion} model): {avg_results['test']['acc_per_epoch'][best_result['best_epoch']]:.2%}")
+    print(
+        f"Best Test Accuracy overall: {max(avg_results['test']['acc_per_epoch']):.2%}")
+    model.load_state_dict(best_model)
+    test_loss, test_acc = test_precondition(loaders['test'], model, tp_idx)
+    print(f"Verify the best test accuracy for best val {select_criterion} is indeed {test_acc:.2%}")
+    acc_result = {phase: avg_results[phase]['acc_per_epoch'][best_result['best_epoch']]
+                  for phase in phases}
+    return model, acc_result, best_result, avg_results
+
+
 def get_l_loss_func():
     nll_criterion = torch.nn.NLLLoss(reduction='mean')
     def l_loss_func(outputs, labels):
@@ -441,6 +649,54 @@ def get_ssl_loss_func(
                 )
             else:
                 raise NotImplementedError()
+        elif semi_supervised_alg in ['PreconDistillHard', 'PreconDistillSoft']:
+            model_T = copy.deepcopy(model)
+            if isinstance(model_T.fc, MultiHead):
+                assert tp_idx == 1
+                model_T.fc = getattr(model_T.fc, f"fc{tp_idx}")
+            
+            epochs = math.ceil(hparam_mode['total_steps'] / hparam_mode['eval_steps'])
+            eval_steps = hparam_mode['eval_steps']
+            print(f"Train for {epochs} epochs each with {eval_steps} steps")
+
+            optimizer = make_optimizer(model_T,
+                                       hparam_mode['optim'],
+                                       hparam_mode['lr'],
+                                       weight_decay=hparam_mode['weight_decay'],
+                                       momentum=hparam_mode['momentum'])
+            scheduler = make_scheduler(optimizer,
+                                       hparam_mode['decay'],
+                                       hparam_mode['warmup_steps'],
+                                       hparam_mode['total_steps'])
+            
+            loaders['train'] = loaders['labeled']
+            model_T, acc_result, best_result, avg_results = train_precondition(
+                loaders,
+                model_T,
+                optimizer,
+                scheduler,
+                epochs,
+                eval_steps,
+                tp_idx,
+                edge_matrix,
+                ema_decay=ema_decay
+            )
+            print(f"Preconditioned Teacher achieves {acc_result['val']} val acc")
+            
+            if semi_supervised_alg == 'PreconDistillHard':
+                ssl_objective = PreconDistillHard(
+                    model_T,
+                    hierarchical_ssl=hierarchical_ssl,
+                    edge_matrix=edge_matrix
+                )
+            elif semi_supervised_alg == 'PreconDistillSoft':
+                ssl_objective = PreconDistillSoft(
+                    model_T,
+                    hierarchical_ssl=hierarchical_ssl,
+                    edge_matrix=edge_matrix
+                )
+            else:
+                raise NotImplementedError()
         elif semi_supervised_alg == 'PL':
             ssl_objective = PseudoLabel(
                 pl_threshold,
@@ -511,6 +767,7 @@ def train_semi_supervised(
         select_criterion: str='acc_per_epoch',
         ema_decay: float=None,
         use_both_weak_and_strong: bool=False, # True if using Fixmatch, where the unlabeled_inputs consists of both weak and strong aug images
+        cl_mode: str='use_new'
     ):
     assert tp_idx == 1
 
@@ -564,9 +821,7 @@ def train_semi_supervised(
         ### Training Phase ###
         model.train()
         loader = loaders['labeled']
-        # unlabeled_loader_iter = iter(loaders['unlabeled'])
-        unlabeled_loader_ssl_iter = iter(loaders['unlabeled_ssl'])
-        unlabeled_loader_partial_feedback_iter = iter(loaders['unlabeled_partial_feedback'])
+        unlabeled_loader_iter = iter(loaders['unlabeled'])
         if use_both_weak_and_strong:
             weak_and_strong_loader_iter = iter(loaders['unlabeled_weak_strong'])
         counter = { # stats this epoch
@@ -595,7 +850,7 @@ def train_semi_supervised(
                 labeled_inputs, labeled_labels = loader_iter.next()
                 
             labeled_inputs = labeled_inputs.to(device)
-            labeled_labels = labeled_labels[tp_idx].to(device)
+            labeled_labels = [labeled_labels[i].to(device) for i in range(len(labeled_labels))]
             count += labeled_inputs.size(0)
             
             # try:
@@ -604,21 +859,23 @@ def train_semi_supervised(
             #     unlabeled_loader_iter = iter(loaders['unlabeled'])
             #     unlabeled_inputs, unlabeled_labels = unlabeled_loader_iter.next()
             try:
-                unlabeled_inputs_ssl, unlabeled_labels_ssl = unlabeled_loader_ssl_iter.next()
+                unlabeled_inputs, unlabeled_labels = unlabeled_loader_iter.next()
             except:
-                unlabeled_loader_ssl_iter = iter(loaders['unlabeled_ssl'])
-                unlabeled_inputs_ssl, unlabeled_labels_ssl = unlabeled_loader_ssl_iter.next()
+                unlabeled_loader_iter = iter(loaders['unlabeled'])
+                unlabeled_inputs, unlabeled_labels = unlabeled_loader_iter.next()
             
-            try:
-                unlabeled_inputs_partial_feedback, unlabeled_labels_partial_feedback = unlabeled_loader_partial_feedback_iter.next()
-            except:
-                unlabeled_loader_partial_feedback_iter = iter(loaders['unlabeled_partial_feedback'])
-                unlabeled_inputs_partial_feedback, unlabeled_labels_partial_feedback = unlabeled_loader_partial_feedback_iter.next()
             
-            count_unlabeled_ssl += unlabeled_inputs_ssl.size(0)
+            count_unlabeled_ssl += unlabeled_inputs.size(0)
+            unlabeled_inputs = unlabeled_inputs.to(device)
+            
+            if cl_mode == 'use_t_1_for_multi_task':
+                unlabeled_inputs_partial_feedback = torch.cat([unlabeled_inputs, labeled_inputs])
+                unlabeled_labels_partial_feedback = [torch.cat([u_label.to(device), l_label]) for u_label, l_label in zip(unlabeled_labels, labeled_labels)]
+            else:
+                unlabeled_inputs_partial_feedback = unlabeled_inputs
+                unlabeled_labels_partial_feedback = unlabeled_labels
+                
             count_unlabeled_partial_feedback += unlabeled_inputs_partial_feedback.size(0)
-            unlabeled_inputs_ssl = unlabeled_inputs_ssl.to(device)
-            unlabeled_inputs_partial_feedback = unlabeled_inputs_partial_feedback.to(device)
             
             if use_both_weak_and_strong:
                 try:
@@ -629,8 +886,8 @@ def train_semi_supervised(
                 
                 w_s_unlabeled_inputs[0] = w_s_unlabeled_inputs[0].to(device)
                 w_s_unlabeled_inputs[1] = w_s_unlabeled_inputs[1].to(device)
-                assert unlabeled_inputs_ssl.size(0) == w_s_unlabeled_inputs[0].size(0)
-                assert unlabeled_inputs_ssl.size(0) == w_s_unlabeled_inputs[1].size(0)
+                assert unlabeled_inputs.size(0) == w_s_unlabeled_inputs[0].size(0)
+                assert unlabeled_inputs.size(0) == w_s_unlabeled_inputs[1].size(0)
 
             optimizer.zero_grad()
 
@@ -638,7 +895,7 @@ def train_semi_supervised(
                 labeled_outputs = model_single_head(labeled_inputs)
                 _, labeled_preds = torch.max(labeled_outputs, 1)
 
-                labeled_loss = l_loss_func(labeled_outputs, labeled_labels)
+                labeled_loss = l_loss_func(labeled_outputs, labeled_labels[tp_idx].to(device))
                 loss = labeled_loss
                 
                 unlabeled_outputs_partial_feedback = model(unlabeled_inputs_partial_feedback)
@@ -646,8 +903,8 @@ def train_semi_supervised(
                 # import pdb; pdb.set_trace()
                 ssl_stats, ssl_loss = ssl_loss_func(
                                             model_single_head,
-                                            unlabeled_inputs_ssl if not use_both_weak_and_strong else w_s_unlabeled_inputs,
-                                            unlabeled_labels_ssl if not use_both_weak_and_strong else w_s_unlabeled_labels
+                                            unlabeled_inputs if not use_both_weak_and_strong else w_s_unlabeled_inputs,
+                                            unlabeled_labels if not use_both_weak_and_strong else w_s_unlabeled_labels
                                         )
                 counter = {
                     k : torch.cat([counter[k], ssl_stats[k]], dim=1)
@@ -655,7 +912,7 @@ def train_semi_supervised(
                 }
                 loss = loss + ssl_loss + coarse_loss
                 running_loss_coarse += float(coarse_loss) * unlabeled_inputs_partial_feedback.size(0)
-                running_loss_ssl = float(ssl_loss) * unlabeled_inputs_ssl.size(0)
+                running_loss_ssl += float(ssl_loss) * unlabeled_inputs.size(0)
 
                 loss.backward()
                 optimizer.step()
@@ -665,7 +922,7 @@ def train_semi_supervised(
             
             # statistics
             running_loss += labeled_loss.item() * labeled_inputs.size(0)
-            running_corrects += torch.sum(labeled_preds == labeled_labels.data)
+            running_corrects += torch.sum(labeled_preds == labeled_labels[tp_idx].data)
             if count_unlabeled_ssl > 0:
                 auxilary_str = "Coarse: {coarse_loss_to_print:.4f}. SSL: {ssl_loss_to_print:.4f}.".format(
                     coarse_loss_to_print=float(running_loss_coarse)/count_unlabeled_partial_feedback,
@@ -778,37 +1035,31 @@ def get_dataset(train_val_subsets,
                 cl_mode=None):
     assert tp_idx == 1
     assert cl_mode != None
-    if cl_mode == 'use_new':
+    if cl_mode in ['use_new', 'use_new_fine_for_coarse', 'use_new_fine_for_partial_feedback_only', 'use_t_1_for_multi_task']:
         labeled_set = train_val_subsets[tp_idx][0]
         val_set = train_val_subsets[tp_idx][1]
-        unlabeled_set = train_val_subsets[0][0]
-        unlabeled_set = {'partial_feedback' : copy.deepcopy(unlabeled_set),
-                         'ssl' : copy.deepcopy(unlabeled_set)}
+        unlabeled_set = copy.deepcopy(train_val_subsets[0][0])
     elif cl_mode == 'use_old':
         labeled_set = train_val_subsets[0][0]
         val_set = train_val_subsets[0][1]
-        unlabeled_set = train_val_subsets[0][0]
-        unlabeled_set = {'partial_feedback' : copy.deepcopy(unlabeled_set),
-                         'ssl' : copy.deepcopy(unlabeled_set)}
+        unlabeled_set = copy.deepcopy(train_val_subsets[0][0])
     elif cl_mode == 'use_both':
         labeled_set = ConcatHierarchyDataset([train_val_subsets[i][0] for i in range(tp_idx+1)])
         val_set = ConcatHierarchyDataset([train_val_subsets[i][1] for i in range(tp_idx+1)])
-        unlabeled_set = train_val_subsets[0][0]
-        unlabeled_set = {'partial_feedback' : copy.deepcopy(unlabeled_set),
-                         'ssl' : copy.deepcopy(unlabeled_set)}
-    elif cl_mode == 'use_new_fine_for_coarse':
-        labeled_set = train_val_subsets[tp_idx][0]
-        val_set = train_val_subsets[tp_idx][1]
-        unlabeled_set = ConcatHierarchyDataset([train_val_subsets[i][0] for i in range(tp_idx+1)])
-        unlabeled_set = {'partial_feedback' : copy.deepcopy(unlabeled_set),
-                         'ssl' : copy.deepcopy(unlabeled_set)}
-    elif cl_mode == 'use_new_fine_for_partial_feedback_only':
-        labeled_set = train_val_subsets[tp_idx][0]
-        val_set = train_val_subsets[tp_idx][1]
-        unlabeled_set_partial_feedback = ConcatHierarchyDataset([copy.deepcopy(train_val_subsets[i][0]) for i in range(tp_idx+1)])
-        unlabeled_set_ssl = copy.deepcopy(train_val_subsets[0][0])
-        unlabeled_set = {'partial_feedback' : unlabeled_set_partial_feedback,
-                         'ssl' : unlabeled_set_ssl}
+        unlabeled_set = copy.deepcopy(train_val_subsets[0][0])
+    else:
+        raise NotImplementedError()
+    # elif cl_mode == 'use_new_fine_for_coarse':
+    #     labeled_set = train_val_subsets[tp_idx][0]
+    #     val_set = train_val_subsets[tp_idx][1]
+    #     unlabeled_set = ConcatHierarchyDataset([copy.deepcopy(train_val_subsets[i][0]) for i in range(tp_idx+1)])
+    # elif cl_mode == 'use_new_fine_for_partial_feedback_only':
+    #     labeled_set = train_val_subsets[tp_idx][0]
+    #     val_set = train_val_subsets[tp_idx][1]
+    #     unlabeled_set_partial_feedback = ConcatHierarchyDataset([copy.deepcopy(train_val_subsets[i][0]) for i in range(tp_idx+1)])
+    #     unlabeled_set_ssl = copy.deepcopy(train_val_subsets[0][0])
+    #     unlabeled_set = {'partial_feedback' : unlabeled_set_partial_feedback,
+    #                      'ssl' : unlabeled_set_ssl}
     return labeled_set, unlabeled_set, val_set
 
 def get_loaders(labeled_set,
@@ -821,27 +1072,20 @@ def get_loaders(labeled_set,
     loaders = {}
     batch_size = int(batch_size / (1.0 + ratio_unlabeled_to_labeled))
     unlabeled_batch_size = int(batch_size * ratio_unlabeled_to_labeled)
-    loaders['unlabeled_partial_feedback'] = torch.utils.data.DataLoader(
-                                                unlabeled_set['partial_feedback'],
-                                                batch_size=unlabeled_batch_size,
-                                                shuffle=True,
-                                                num_workers=workers,
-                                                drop_last=True
-                                            )
-    loaders['unlabeled_ssl'] = torch.utils.data.DataLoader(
-                                   unlabeled_set['ssl'],
-                                   batch_size=unlabeled_batch_size,
-                                   shuffle=True,
-                                   num_workers=workers,
-                                   drop_last=True
-                               )
+    loaders['unlabeled'] = torch.utils.data.DataLoader(
+                                unlabeled_set,
+                                batch_size=unlabeled_batch_size,
+                                shuffle=True,
+                                num_workers=workers,
+                                drop_last=True
+                            )
     print(f"Labeled batch size is {batch_size}; unlabeled is {unlabeled_batch_size}")
     
     # print("Need to check whether the new set has new transform + old set has old transform!")
-    assert isinstance(unlabeled_set['ssl'], setups.HierarchyDataset) or \
-           isinstance(unlabeled_set['ssl'], setups.SubsetHierarchyDataset) or \
-           isinstance(unlabeled_set['ssl'], setups.ConcatHierarchyDataset)
-    unlabeled_set_weak_strong = copy.deepcopy(unlabeled_set['ssl'])
+    assert isinstance(unlabeled_set, setups.HierarchyDataset) or \
+           isinstance(unlabeled_set, setups.SubsetHierarchyDataset) or \
+           isinstance(unlabeled_set, setups.ConcatHierarchyDataset)
+    unlabeled_set_weak_strong = copy.deepcopy(unlabeled_set)
     unlabeled_set_weak_strong.update_transform(unlabeled_set_weak_strong.weak_strong_transform)
     loaders['unlabeled_weak_strong'] = torch.utils.data.DataLoader(
                                             unlabeled_set_weak_strong,
@@ -849,7 +1093,7 @@ def get_loaders(labeled_set,
                                             shuffle=True,
                                             num_workers=workers,
                                             drop_last=True
-                                        )
+                                       )
     
     loaders['labeled'] = torch.utils.data.DataLoader(
                              labeled_set,
@@ -1030,7 +1274,8 @@ def start_training_semi_supervised(model,
         ssl_loss_func,
         ema_decay=ema_decay,
         pl_threshold=pl_threshold,
-        use_both_weak_and_strong=use_both_weak_and_strong
+        use_both_weak_and_strong=use_both_weak_and_strong,
+        cl_mode=cl_mode
     )
     
     if finetuning_mode != None:

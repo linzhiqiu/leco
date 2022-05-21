@@ -9,6 +9,7 @@ import os
 from randaugment import RandAugmentMC, RandAugmentInat
 import zipfile
 import gdown
+from tqdm import tqdm
 # annotation_file = ./semi_inat/annotation_v2.json
 
 cifar10_mean = (0.4914, 0.4822, 0.4465)
@@ -362,10 +363,11 @@ def download_semi_inat(data_dir):
         print(f"{inat_folder} already exists.")
 
 class SemiInat2021(LecoDataset):
-    def __init__(self, data_dir, levels):
+    def __init__(self, data_dir, levels, val_ratio):
         super().__init__(data_dir)
         download_semi_inat(self.data_dir)
         self.levels = levels # The hierarchy level for classification
+        self.val_ratio = val_ratio # val ratio per class
     
     def get_transform_train(self):
         raise NotImplementedError() #TODO
@@ -389,6 +391,60 @@ class SemiInat2021(LecoDataset):
             transform=transform_test
         )
         return trainset, testset
+    
+    def get_train_val_indices(self, trainset):
+        self.target_to_indices = {}
+        for idx, target in tqdm(enumerate(trainset.dataset.targets)):
+            if not target in self.target_to_indices:
+                self.target_to_indices[target] = []
+            self.target_to_indices[target].append(idx)
+        
+        all_t_0_train_indices = [] 
+        all_t_0_val_indices = []
+        all_t_1_train_indices = []
+        all_t_1_val_indices = []
+        for target in self.target_to_indices:
+            random.shuffle(self.target_to_indices[target])
+            
+            len_of_indices = len(self.target_to_indices[target])
+            len_of_t_0 = int(len_of_indices/2)
+            len_of_t_1 = len_of_indices - len_of_t_0
+             
+            t_0_indices = self.target_to_indices[target][:len_of_t_0]
+            t_1_indices = self.target_to_indices[target][len_of_t_0:]
+            
+            assert len(t_1_indices) == len_of_t_1
+            assert len(t_0_indices) == len_of_t_0
+            
+            len_of_t_0_val = int(len_of_t_0 * self.val_ratio)
+            len_of_t_0_train = len_of_t_0 - len_of_t_0_val
+            t_0_val_indices = t_0_indices[:len_of_t_0_val]
+            t_0_train_indices = t_0_indices[len_of_t_0_val:]
+            assert len(t_0_train_indices) > 0
+            assert len(t_0_val_indices) > 0
+            assert len(t_0_train_indices) == len_of_t_0_train
+            assert len(t_0_val_indices) == len_of_t_0_val
+            
+            len_of_t_1_val = int(len_of_t_1 * self.val_ratio)
+            len_of_t_1_train = len_of_t_1 - len_of_t_1_val
+            t_1_val_indices = t_1_indices[:len_of_t_1_val]
+            t_1_train_indices = t_1_indices[len_of_t_1_val:]
+            assert len(t_1_train_indices) > 0
+            assert len(t_1_val_indices) > 0
+            assert len(t_1_train_indices) == len_of_t_1_train
+            assert len(t_1_val_indices) == len_of_t_1_val
+            
+            all_t_0_train_indices += t_0_train_indices
+            all_t_0_val_indices += t_0_val_indices
+            all_t_1_train_indices += t_1_train_indices
+            all_t_1_val_indices += t_1_val_indices
+
+        print(f"Time 0 Train Size: {len(all_t_0_train_indices)}")
+        print(f"Time 0 Val Size: {len(all_t_0_val_indices)}")
+        print(f"Time 1 Train Size: {len(all_t_1_train_indices)}")
+        print(f"Time 1 Val Size: {len(all_t_1_val_indices)}")
+        train_val_indices = [(all_t_0_train_indices, all_t_0_val_indices), (all_t_1_train_indices, all_t_1_val_indices)]
+        return train_val_indices
     
     def _get_class_hierarchy(self):
         # An example of taxa
@@ -531,15 +587,15 @@ class SemiInat2021(LecoDataset):
         return all_tp_info, leaf_idx_to_all_class_idx
 
 class SemiInat2021WeakAug(SemiInat2021):
-    def __init__(self, data_dir, levels=[1,2]):
-        super().__init__(data_dir, levels)
+    def __init__(self, data_dir, levels=[3,6], val_ratio=0.2):
+        super().__init__(data_dir, levels, val_ratio)
     
     def get_transform_train(self):
         return get_inat_transform_train_weak_aug()
 
 class SemiInat2021StrongAug(SemiInat2021):
-    def __init__(self, data_dir, levels=[1,2]):
-        super().__init__(data_dir, levels)
+    def __init__(self, data_dir, levels=[3,6], val_ratio=0.2):
+        super().__init__(data_dir, levels, val_ratio)
     
     def get_transform_train(self):
         return get_inat_transform_train_strong_aug()

@@ -34,10 +34,10 @@ SETUPS = {
         'CIFAR100StrongAug',
         tp_buffers=[(10000, 2500), (10000, 2500)], # each element is a tuple of (train_set_size:int, val_set_size:int)
     ),
-    'semi_inat_weakaug' : Setup(
-        'SemiInat2021WeakAug',
-        tp_buffers=None,
-    ),
+    # 'semi_inat_weakaug' : Setup(
+    #     'SemiInat2021WeakAug',
+    #     tp_buffers=None,
+    # ),
     'semi_inat_strongaug': Setup(
         'SemiInat2021StrongAug',
         tp_buffers=None,
@@ -197,7 +197,12 @@ def samples_per_class(dataset, all_tp_info, leaf_idx_to_all_class_idx):
         sorted_stats[tp_idx] = list(zip(sorted_labels, sorted_sample_num))
     return sorted_stats
 
-def generate_dataset(data_dir, setup : Setup, annotation_file=''):
+
+def download_dataset(data_dir, setup : Setup):
+    print(f"==> Preparing {setup.dataset_name} data..")
+    dataset = getattr(datasets, setup.dataset_name)(data_dir)
+
+def generate_dataset(data_dir, setup : Setup):
     print(f"==> Preparing {setup.dataset_name} data..")
     dataset = getattr(datasets, setup.dataset_name)(data_dir)
     all_tp_info, leaf_idx_to_all_class_idx = dataset.get_class_hierarchy()
@@ -237,7 +242,7 @@ def get_train_val_indices(dataset, trainset, tp_buffers=None):
             indices_trainset = indices_trainset[tp_buffer_train+tp_buffer_val:]
             train_val_indices.append((indices_tp_train, indices_tp_val))
     else:
-        train_val_indices = dataset.get_train_val_indices()
+        train_val_indices = dataset.get_train_val_indices(trainset)
     return train_val_indices
 
 if __name__ == "__main__":
