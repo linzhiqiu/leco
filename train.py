@@ -865,12 +865,16 @@ def train_semi_supervised(
                 unlabeled_inputs, unlabeled_labels = unlabeled_loader_iter.next()
             
             
+            
             count_unlabeled_ssl += unlabeled_inputs.size(0)
             unlabeled_inputs = unlabeled_inputs.to(device)
             
             if cl_mode == 'use_t_1_for_multi_task':
                 unlabeled_inputs_partial_feedback = torch.cat([unlabeled_inputs, labeled_inputs])
                 unlabeled_labels_partial_feedback = [torch.cat([u_label.to(device), l_label]) for u_label, l_label in zip(unlabeled_labels, labeled_labels)]
+            elif cl_mode == 'use_both_for_multi_task':
+                unlabeled_inputs_partial_feedback = labeled_inputs
+                unlabeled_labels_partial_feedback = labeled_labels
             else:
                 unlabeled_inputs_partial_feedback = unlabeled_inputs
                 unlabeled_labels_partial_feedback = unlabeled_labels
@@ -1043,7 +1047,7 @@ def get_dataset(train_val_subsets,
         labeled_set = train_val_subsets[0][0]
         val_set = train_val_subsets[0][1]
         unlabeled_set = copy.deepcopy(train_val_subsets[0][0])
-    elif cl_mode == 'use_both':
+    elif cl_mode in ['use_both', 'use_both_for_multi_task']:
         labeled_set = ConcatHierarchyDataset([train_val_subsets[i][0] for i in range(tp_idx+1)])
         val_set = ConcatHierarchyDataset([train_val_subsets[i][1] for i in range(tp_idx+1)])
         unlabeled_set = copy.deepcopy(train_val_subsets[0][0])

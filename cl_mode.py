@@ -5,4 +5,5 @@ CL_MODES = [
     'use_t_1_for_multi_task', # (Updated version) Use the new sampled images for labeled set, but use both new and old for partial feedback (not ssl)
     'use_old', # Use the images from previous time
     'use_both', # Use both the new and old images (no semi supervised learning)
+    'use_both_for_multi_task', # (Updated version) Use T0+T1 sampled images for labeled set + partial feedback (no ssl)
 ]

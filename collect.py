@@ -92,13 +92,37 @@ argparser.add_argument('--train_per_class',
 # # SEMI_SUPERVISED_ALG=["PreconDistillHard", "PreconDistillSoft"] #TODO
 # TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
 
+# use_both_for_multi_task + CIFAR
+# SEED_LIST = [None, 1, 10, 100, 1000] #TODO
+# PL_THRESHOLDS = [0.95]
+# RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
+# HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
+# FINETUNING = train.FINETUNING
+# CL_MODES = ['use_both_for_multi_task']
+# PARTIAL_FEEDBACK_MODE=['single_head', 'two_head']
+# SEMI_SUPERVISED_ALG=[None] #TODO
+# TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
+# TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_pt_linear']
 
-# INat upper bound
+# INat upper bound + use_both_for_multi_task
 SEED_LIST = [None, 1, 10, 100, 1000] #TODO
-# SEED_LIST = [None]  # TODO
 RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
 HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
 FINETUNING = train.FINETUNING
+
+PL_THRESHOLDS = [0.95]
+CL_MODES = ['use_both_for_multi_task']
+PARTIAL_FEEDBACK_MODE=['single_head', 'two_head']
+SEMI_SUPERVISED_ALG = [None]  # TODO
+TRAIN_MODE_LIST = ['resnet50_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
+# TRAIN_MODE_LIST = ['resnet50_scratch_0_finetune_pt_linear_1_finetune_pt_linear']
+
+# INat upper bound
+# SEED_LIST = [None, 1, 10, 100, 1000] #TODO
+# # SEED_LIST = [None]  # TODO
+# RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
+# HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
+# FINETUNING = train.FINETUNING
 
 # PL_THRESHOLDS = [None]
 # # CL_MODES = ['use_both', 'use_t_1_for_multi_task', 'use_old']
@@ -107,14 +131,14 @@ FINETUNING = train.FINETUNING
 # SEMI_SUPERVISED_ALG=[None] #TODO
 # TRAIN_MODE_LIST = configs.ALL_TRAIN_MODES['inat']
 
-PL_THRESHOLDS = [0.95]
-CL_MODES = ['use_t_1_for_multi_task']
-# PARTIAL_FEEDBACK_MODE=['single_head', 'two_head', None]
-PARTIAL_FEEDBACK_MODE=['two_head']
-# SEMI_SUPERVISED_ALG=["PreconDistillHard", "PreconDistillSoft", "DistillHard", "DistillSoft", "Fixmatch", "PL", None] #TODO
-# SEMI_SUPERVISED_ALG=["DistillHard", "DistillSoft", "Fixmatch", "PL", None] #TODO
-SEMI_SUPERVISED_ALG = ["DistillSoft"]  # TODO
-TRAIN_MODE_LIST = ['resnet50_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
+# PL_THRESHOLDS = [0.95]
+# CL_MODES = ['use_t_1_for_multi_task']
+# # PARTIAL_FEEDBACK_MODE=['single_head', 'two_head', None]
+# PARTIAL_FEEDBACK_MODE=['two_head']
+# # SEMI_SUPERVISED_ALG=["PreconDistillHard", "PreconDistillSoft", "DistillHard", "DistillSoft", "Fixmatch", "PL", None] #TODO
+# # SEMI_SUPERVISED_ALG=["DistillHard", "DistillSoft", "Fixmatch", "PL", None] #TODO
+# SEMI_SUPERVISED_ALG = ["DistillSoft"]  # TODO
+# TRAIN_MODE_LIST = ['resnet50_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
 
 # TRAIN_MODE_LIST = ['resnet50_imagenet_0_finetune_pt_linear_1_finetune_pt_linear']
 # TRAIN_MODE_LIST = ['resnet50_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
@@ -573,6 +597,9 @@ def gather_exp(data_dir: str,
                 elif cl_mode in ['use_new', 'use_new_fine_for_coarse', 'use_new_fine_for_partial_feedback_only', 'use_t_1_for_multi_task']:
                     partial_feedback_mode_list = PARTIAL_FEEDBACK_MODE
                     semi_supervised_alg_list = SEMI_SUPERVISED_ALG
+                elif cl_mode in ['use_both_for_multi_task']:
+                    partial_feedback_mode_list = PARTIAL_FEEDBACK_MODE
+                    semi_supervised_alg_list = [None]
                 else:
                     raise NotImplementedError()
                 for partial_feedback_mode in partial_feedback_mode_list:
