@@ -94,7 +94,7 @@ argparser.add_argument("--partial_feedback_mode",
                         type=str,
                         default=None,
                         choices=PARTIAL_FEEDBACK_MODE,
-                        help="The partial feedback loss to use. Default is None")
+                        help="The partial feedback loss (None/single_head/two_head) to use. Default is None")
 argparser.add_argument("--hierarchical_ssl",
                         type=str,
                         default=None,
@@ -177,6 +177,26 @@ def is_better(select_criterion, curr_value, best_value):
     else:
         return curr_value > best_value
 
+def update_per_class_corrects(corrects, preds, labels):
+    correct = preds == labels.data
+    for idx, label in enumerate(labels):
+        corrects[int(label)] += correct[idx]
+
+def update_per_class_count(count, labels):
+    for label in labels:
+        count[int(label)] += 1
+
+def per_class_acc(corrects, count):
+    avg_per_class_acc = 0.0
+    num_of_class = len(list(count.keys()))
+    for k in corrects:
+        if count[k] > 0:
+            avg_per_class_acc += float(corrects[k] / count[k])
+        else:
+            num_of_class -= 1
+    
+    return avg_per_class_acc / num_of_class
+
 def train(loaders,
           model,
           optimizer,
@@ -184,6 +204,7 @@ def train(loaders,
           epochs,
           eval_steps,
           tp_idx,
+          num_of_class,
           select_criterion='acc_per_epoch',
           ema_decay=None):
     model = model.to(device)
@@ -193,15 +214,13 @@ def train(loaders,
         ema_model = None
     criterion = torch.nn.NLLLoss(reduction='mean')
 
-    avg_results = {'train': {'loss_per_epoch': [], 'acc_per_epoch': [],},
-                   'val':   {'loss_per_epoch': [], 'acc_per_epoch': []},
-                   'test':  {'loss_per_epoch': [], 'acc_per_epoch': []}}
+    avg_results = {'train': {'loss_per_epoch': [], 'acc_per_epoch': [], 'per_class_correct_per_epoch' : [], 'per_class_count_per_epoch' : []},
+                   'val':   {'loss_per_epoch': [], 'acc_per_epoch': [], 'per_class_correct_per_epoch' : [], 'per_class_count_per_epoch' : []},
+                   'test':  {'loss_per_epoch': [], 'acc_per_epoch': [], 'per_class_correct_per_epoch' : [], 'per_class_count_per_epoch' : []}}
     phases = ['train', 'val', 'test']
 
     # Save best model based on select_criterion
     best_result = {
-                #    'best_loss': None, # overall loss at best epoch
-                #    'best_acc': 0, # overall acc at best epoch
                    'best_value' : None, # Best value of select_criterion
                    'best_epoch': None,
                    'best_model': None,
@@ -214,8 +233,9 @@ def train(loaders,
         model.train()
 
         running_loss = 0.0
-        running_corrects = 0. # Overall correct count
-        count = 0
+        running_corrects = {cls_idx : 0. for cls_idx in range(num_of_class)} # Overall correct count per class
+        count = {cls_idx: 0 for cls_idx in range(num_of_class)} # Count per class
+        total = 0 # total count
 
         loader_iter = iter(loaders['train'])
         p_bar = tqdm(range(eval_steps))
@@ -227,9 +247,9 @@ def train(loaders,
                 data = loader_iter.next()
 
             inputs, labels = data
-            count += inputs.size(0)
 
             inputs = inputs.to(device)
+            total += inputs.shape[0]
             labels = labels[tp_idx].to(device)
 
             optimizer.zero_grad()
@@ -249,22 +269,25 @@ def train(loaders,
             
             # statistics
             running_loss += loss.item() * inputs.size(0)
-            running_corrects += torch.sum(preds == labels.data)
+            update_per_class_count(count, labels)
+            update_per_class_corrects(running_corrects, preds, labels)
             p_bar.set_description("Train Epoch: {epoch}/{epochs:4}. Iter: {batch:4}/{iter:4}. LR: {lr:.4f}. Loss: {loss:.4f}.".format(
                 epoch=epoch + 1,
                 epochs=epochs,
                 batch=batch + 1,
                 iter=eval_steps,
                 lr=scheduler.get_last_lr()[0],
-                loss=float(running_loss)/count))
+                loss=float(running_loss)/total))
             p_bar.update()
 
         p_bar.close()
-        avg_loss = float(running_loss)/count
-        avg_acc = float(running_corrects)/count
+        avg_loss = float(running_loss)/total
+        avg_acc = per_class_acc(running_corrects, count)
         avg_results['train']['loss_per_epoch'].append(avg_loss)
         avg_results['train']['acc_per_epoch'].append(avg_acc)
-        print(f"Epoch {epoch}: Average train Loss {avg_loss:.4f}, Acc {avg_acc:.2%}")
+        avg_results['train']['per_class_correct_per_epoch'].append(running_corrects)
+        avg_results['train']['per_class_count_per_epoch'].append(count)
+        print(f"Epoch {epoch}: Average train Loss {avg_loss:.4f}, Per-class Acc {avg_acc:.2%}")
         ### End of Training phase ###
         
         ### Val+Test phase ###
@@ -273,13 +296,14 @@ def train(loaders,
         else:
             eval_model = model
 
-        val_loss, val_acc = test(loaders['val'], eval_model, tp_idx)
+        val_loss, val_acc, val_correct, val_count = test(loaders['val'], eval_model, tp_idx, num_of_class)
         avg_results['val']['loss_per_epoch'].append(val_loss)
         avg_results['val']['acc_per_epoch'].append(val_acc)
+        avg_results['val']['per_class_correct_per_epoch'].append(val_correct)
+        avg_results['val']['per_class_count_per_epoch'].append(val_count)
         curr_value = avg_results['val'][select_criterion][-1]
         if best_result['best_value'] == None or is_better(select_criterion, curr_value, best_result['best_value']):
-            print(
-                f"Best val {select_criterion} at epoch {epoch} being {curr_value}")
+            print(f"Best val {select_criterion} at epoch {epoch} being {curr_value}")
             best_result['best_epoch'] = epoch
             # best_result['best_acc'] = val_acc
             # best_result['best_loss'] = val_loss
@@ -287,20 +311,22 @@ def train(loaders,
             best_model = copy.deepcopy(eval_model.state_dict())
             if tp_idx in SAVE_BEST_MODEL_FOR_TP:
                 best_result['best_model'] = best_model
-        print(f"Epoch {epoch}: Average val Loss {val_loss:.4f}, Acc {val_acc:.2%}")
+        print(f"Epoch {epoch}: Average val Loss {val_loss:.4f}, Per-class Acc {val_acc:.2%}")
         
-        test_loss, test_acc = test(loaders['test'], eval_model, tp_idx)
+        test_loss, test_acc, test_correct, test_count = test(loaders['test'], eval_model, tp_idx, num_of_class)
         avg_results['test']['loss_per_epoch'].append(test_loss)
         avg_results['test']['acc_per_epoch'].append(test_acc)
-        print(f"Epoch {epoch}: Average test Loss {test_loss:.4f}, Acc {test_acc:.2%}")
+        avg_results['test']['per_class_correct_per_epoch'].append(test_correct)
+        avg_results['test']['per_class_count_per_epoch'].append(test_count)
+        print(f"Epoch {epoch}: Average test Loss {test_loss:.4f}, Per-class Acc {test_acc:.2%}")
         ### End of Val+Test phase ###
         print()
-    print(f"Test Accuracy (for best val {select_criterion} model): {avg_results['test']['acc_per_epoch'][best_result['best_epoch']]:.2%}")
+    print(f"Test Per-class Accuracy (for best val {select_criterion} model): {avg_results['test']['acc_per_epoch'][best_result['best_epoch']]:.2%}")
     print(
-        f"Best Test Accuracy overall: {max(avg_results['test']['acc_per_epoch']):.2%}")
+        f"Best Test Per-class Accuracy overall: {max(avg_results['test']['acc_per_epoch']):.2%}")
     model.load_state_dict(best_model)
-    test_loss, test_acc = test(loaders['test'], model, tp_idx)
-    print(f"Verify the best test accuracy for best val {select_criterion} is indeed {test_acc:.2%}")
+    test_loss, test_acc, test_correct, test_count = test(loaders['test'], model, tp_idx, num_of_class)
+    print(f"Verify the best test per-class accuracy for best val {select_criterion} is indeed {test_acc:.2%}")
     acc_result = {phase: avg_results[phase]['acc_per_epoch'][best_result['best_epoch']]
                   for phase in phases}
     return model, acc_result, best_result, avg_results
@@ -336,10 +362,11 @@ def get_l_loss_func():
 
 def get_coarse_loss_func(edge_matrix, partial_feedback_mode):
     nll_criterion = torch.nn.NLLLoss(reduction='mean')
+    if partial_feedback_mode == None:
+        return None
+    
     def coarse_loss_func(outputs, labels):
-        if partial_feedback_mode == None:
-            return 0.
-        elif partial_feedback_mode == 'single_head':
+        if partial_feedback_mode == 'single_head':
             outputs = outputs - outputs.max(1)[0].unsqueeze(1)
             prob = torch.nn.Softmax(dim=1)(outputs)
             coarse_prob = torch.matmul(prob, edge_matrix)
@@ -360,6 +387,7 @@ def get_ssl_loss_func(
         model,
         hparam_mode,
         tp_idx,
+        num_of_classes,
         ema_decay,
         edge_matrix: torch.Tensor = None,
         semi_supervised_alg: str = None,
@@ -397,6 +425,7 @@ def get_ssl_loss_func(
                 epochs,
                 eval_steps,
                 tp_idx,
+                num_of_classes[tp_idx],
                 ema_decay=ema_decay
             )
             print(f"Teacher achieves {acc_result['val']} val acc")
@@ -478,6 +507,7 @@ def train_semi_supervised(
         epochs,
         eval_steps,
         tp_idx,
+        num_of_classes,
         l_loss_func,
         coarse_loss_func,
         ssl_loss_func,
@@ -498,9 +528,9 @@ def train_semi_supervised(
     
     nll_criterion = torch.nn.NLLLoss(reduction='mean')
     
-    avg_results = {'train': {'loss_per_epoch': [], 'acc_per_epoch': []}, # only measuring the labeled portion
-                   'val':   {'loss_per_epoch': [], 'acc_per_epoch': []},
-                   'test':  {'loss_per_epoch': [], 'acc_per_epoch': []}}
+    avg_results = {'train': {'loss_per_epoch': [], 'acc_per_epoch': [], 'per_class_correct_per_epoch' : [], 'per_class_count_per_epoch' : []}, # only measuring the labeled portion
+                   'val':   {'loss_per_epoch': [], 'acc_per_epoch': [], 'per_class_correct_per_epoch' : [], 'per_class_count_per_epoch' : []},
+                   'test':  {'loss_per_epoch': [], 'acc_per_epoch': [], 'per_class_correct_per_epoch' : [], 'per_class_count_per_epoch' : []}}
     stats = { # stats per epoch
         'mask_rate' : [],
         'impurity' : [],
@@ -553,8 +583,9 @@ def train_semi_supervised(
         running_loss = 0.0
         running_loss_ssl = 0.0
         running_loss_coarse = 0.0
-        running_corrects = 0.0
-        count = 0
+        running_corrects = {cls_idx : 0. for cls_idx in range(num_of_classes[1])} # Overall correct count per class
+        count = {cls_idx: 0 for cls_idx in range(num_of_classes[1])} # Count per class
+        total = 0 # total count
         count_unlabeled_ssl = 0
         count_unlabeled_partial_feedback = 0
         
@@ -569,7 +600,7 @@ def train_semi_supervised(
                 
             labeled_inputs = labeled_inputs.to(device)
             labeled_labels = [labeled_labels[i].to(device) for i in range(len(labeled_labels))]
-            count += labeled_inputs.size(0)
+            total += labeled_inputs.size(0)
             
             # try:
             #     unlabeled_inputs, unlabeled_labels = unlabeled_loader_iter.next()
@@ -583,21 +614,16 @@ def train_semi_supervised(
                 unlabeled_inputs, unlabeled_labels = unlabeled_loader_iter.next()
             
             
-            
             count_unlabeled_ssl += unlabeled_inputs.size(0)
             unlabeled_inputs = unlabeled_inputs.to(device)
             
-            if cl_mode == 'label_new':
-                unlabeled_inputs_partial_feedback = torch.cat([unlabeled_inputs, labeled_inputs])
-                unlabeled_labels_partial_feedback = [torch.cat([u_label.to(device), l_label]) for u_label, l_label in zip(unlabeled_labels, labeled_labels)]
-            elif cl_mode == 'upper_bound_with_multi_task':
-                unlabeled_inputs_partial_feedback = labeled_inputs
-                unlabeled_labels_partial_feedback = labeled_labels
+            if cl_mode == "label_new":
+                curr_partial_count = unlabeled_inputs.size(0) + labeled_inputs.size(0)
+            elif cl_mode == "upper_bound_with_multi_task":
+                curr_partial_count = labeled_inputs.size(0)
             else:
-                unlabeled_inputs_partial_feedback = unlabeled_inputs
-                unlabeled_labels_partial_feedback = unlabeled_labels
-                
-            count_unlabeled_partial_feedback += unlabeled_inputs_partial_feedback.size(0)
+                curr_partial_count = unlabeled_inputs.size(0)
+            count_unlabeled_partial_feedback += curr_partial_count
             
             if use_both_weak_and_strong:
                 try:
@@ -614,14 +640,34 @@ def train_semi_supervised(
             optimizer.zero_grad()
 
             with torch.set_grad_enabled(True):
-                labeled_outputs = model_single_head(labeled_inputs)
-                _, labeled_preds = torch.max(labeled_outputs, 1)
+                labeled_outputs = model(labeled_inputs)
+                if type(labeled_outputs) == list:
+                    labeled_outputs_for_ce = labeled_outputs[tp_idx]
+                else:
+                    labeled_outputs_for_ce = labeled_outputs
+                _, labeled_preds = torch.max(labeled_outputs_for_ce, 1)
 
-                labeled_loss = l_loss_func(labeled_outputs, labeled_labels[tp_idx].to(device))
+                labeled_loss = l_loss_func(labeled_outputs_for_ce, labeled_labels[tp_idx].to(device))
                 loss = labeled_loss
                 
-                unlabeled_outputs_partial_feedback = model(unlabeled_inputs_partial_feedback)
-                coarse_loss = coarse_loss_func(unlabeled_outputs_partial_feedback, unlabeled_labels_partial_feedback[tp_idx-1].cuda())
+                if coarse_loss_func:
+                    unlabeled_outputs = model(unlabeled_inputs)
+                    if cl_mode == 'label_new':
+                        if type(unlabeled_outputs) == list:
+                            unlabeled_outputs_partial_feedback = [torch.cat([u_out, l_out]) for u_out, l_out in zip(unlabeled_outputs, labeled_outputs)]
+                        else:
+                            unlabeled_outputs_partial_feedback = torch.cat([unlabeled_outputs, labeled_outputs])
+                        unlabeled_labels_partial_feedback = [torch.cat([u_label.to(device), l_label]) for u_label, l_label in zip(unlabeled_labels, labeled_labels)]
+                    elif cl_mode == 'upper_bound_with_multi_task':
+                        unlabeled_outputs_partial_feedback = labeled_outputs
+                        unlabeled_labels_partial_feedback = labeled_labels
+                    else:
+                        unlabeled_outputs_partial_feedback = unlabeled_outputs
+                        unlabeled_labels_partial_feedback = unlabeled_labels
+                    coarse_loss = coarse_loss_func(unlabeled_outputs_partial_feedback, unlabeled_labels_partial_feedback[tp_idx-1].cuda())
+                else:
+                    coarse_loss = 0.0
+                    
                 # import pdb; pdb.set_trace()
                 ssl_stats, ssl_loss = ssl_loss_func(
                                             model_single_head,
@@ -633,7 +679,7 @@ def train_semi_supervised(
                     for k in ssl_stats
                 }
                 loss = loss + ssl_loss + coarse_loss
-                running_loss_coarse += float(coarse_loss) * unlabeled_inputs_partial_feedback.size(0)
+                running_loss_coarse += float(coarse_loss) * curr_partial_count
                 running_loss_ssl += float(ssl_loss) * unlabeled_inputs.size(0)
 
                 loss.backward()
@@ -644,7 +690,9 @@ def train_semi_supervised(
             
             # statistics
             running_loss += labeled_loss.item() * labeled_inputs.size(0)
-            running_corrects += torch.sum(labeled_preds == labeled_labels[tp_idx].data)
+            update_per_class_count(count, labeled_labels[tp_idx])
+            update_per_class_corrects(running_corrects, labeled_preds, labeled_labels[tp_idx])
+            # running_corrects += torch.sum(labeled_preds == labeled_labels[tp_idx].data)
             if count_unlabeled_ssl > 0:
                 auxilary_str = "Coarse: {coarse_loss_to_print:.4f}. SSL: {ssl_loss_to_print:.4f}.".format(
                     coarse_loss_to_print=float(running_loss_coarse)/count_unlabeled_partial_feedback,
@@ -658,18 +706,19 @@ def train_semi_supervised(
                 batch=batch + 1,
                 iter=eval_steps,
                 lr=scheduler.get_last_lr()[0],
-                loss=float(running_loss)/count,
+                loss=float(running_loss)/total,
                 auxilary_str=auxilary_str,
                 # loss_ssl_pbar=loss_ssl_pbar
                 ))
             p_bar.update()
         
         p_bar.close()
-        avg_loss = float(running_loss)/count
-        avg_acc = float(running_corrects)/count
+        avg_loss = float(running_loss)/total
+        avg_acc = per_class_acc(running_corrects, count)
         avg_results['train']['loss_per_epoch'].append(avg_loss)
         avg_results['train']['acc_per_epoch'].append(avg_acc)
-        
+        avg_results['train']['per_class_correct_per_epoch'].append(running_corrects)
+        avg_results['train']['per_class_count_per_epoch'].append(count)
         update_stats(counter)
         ### End of Training Phase ###
         
@@ -683,9 +732,11 @@ def train_semi_supervised(
         if isinstance(eval_model.fc, MultiHead):
             eval_model.fc = getattr(eval_model.fc, f"fc{tp_idx}")
             
-        val_loss, val_acc = test(loaders['val'], eval_model, tp_idx)
+        val_loss, val_acc, val_correct, val_count = test(loaders['val'], eval_model, tp_idx, num_of_classes[tp_idx])
         avg_results['val']['loss_per_epoch'].append(val_loss)
         avg_results['val']['acc_per_epoch'].append(val_acc)
+        avg_results['val']['per_class_correct_per_epoch'].append(val_correct)
+        avg_results['val']['per_class_count_per_epoch'].append(val_count)
         curr_value = avg_results['val'][select_criterion][-1]
         if best_result['best_value'] == None or is_better(select_criterion, curr_value, best_result['best_value']):
             print(
@@ -698,25 +749,27 @@ def train_semi_supervised(
             best_model = copy.deepcopy(eval_model.state_dict())
             if tp_idx in SAVE_BEST_MODEL_FOR_TP:
                 best_result['best_model'] = best_model
-        print(f"Epoch {epoch}: Average val Loss {val_loss:.4f}, Acc {val_acc:.2%}")
+        print(f"Epoch {epoch}: Average val Loss {val_loss:.4f}, Per-class Acc {val_acc:.2%}")
         
-        test_loss, test_acc = test(loaders['test'], eval_model, tp_idx)
+        test_loss, test_acc, test_correct, test_count = test(loaders['test'], eval_model, tp_idx, num_of_classes[tp_idx])
         avg_results['test']['loss_per_epoch'].append(test_loss)
         avg_results['test']['acc_per_epoch'].append(test_acc)
+        avg_results['test']['per_class_correct_per_epoch'].append(test_correct)
+        avg_results['test']['per_class_count_per_epoch'].append(test_count)
         print(f"Epoch {epoch}: Average test Loss {test_loss:.4f}, Acc {test_acc:.2%}")
         ### End of Val+Test phase ###
         print()
     print(
-        f"Test Accuracy (for best val {select_criterion} model): {avg_results['test']['acc_per_epoch'][best_result['best_epoch']]:.2%}")
+        f"Test Per-class Accuracy (for best val {select_criterion} model): {avg_results['test']['acc_per_epoch'][best_result['best_epoch']]:.2%}")
     print(
-        f"Best Test Accuracy overall: {max(avg_results['test']['acc_per_epoch']):.2%}")
+        f"Best Test Per-class Accuracy overall: {max(avg_results['test']['acc_per_epoch']):.2%}")
     
     model_test = copy.deepcopy(model)
     if isinstance(model_test.fc, MultiHead):
         model_test.fc = getattr(model_test.fc, f"fc{tp_idx}")
     model_test.load_state_dict(best_model)
-    test_loss, test_acc = test(loaders['test'], model_test, tp_idx)
-    print(f"Verify the best test accuracy for best val {select_criterion} is indeed {test_acc:.2%}")
+    test_loss, test_acc, test_correct, test_count = test(loaders['test'], eval_model, tp_idx, num_of_classes[tp_idx])
+    print(f"Verify the best test per-class accuracy for best val {select_criterion} is indeed {test_acc:.2%}")
     acc_result = {phase: avg_results[phase]['acc_per_epoch'][best_result['best_epoch']]
                   for phase in phases}
     
@@ -724,16 +777,18 @@ def train_semi_supervised(
 
 def test(test_loader,
          model,
-         tp_idx):
+         tp_idx,
+         num_of_class):
     model = model.to(device).eval()
     criterion = torch.nn.NLLLoss(reduction='mean')
-    running_corrects = 0.
+    running_corrects = {cls_idx: 0. for cls_idx in range(num_of_class)}
+    count = {cls_idx: 0 for cls_idx in range(num_of_class)}
     running_loss = 0.
-    count = 0
+    total = 0
 
     for batch, data in enumerate(test_loader):
         inputs, labels = data
-        count += inputs.size(0)
+        total += inputs.size(0)
 
         inputs = inputs.to(device)
         labels = labels[tp_idx].to(device)
@@ -745,12 +800,14 @@ def test(test_loader,
             loss = criterion(log_probability, labels)
 
         # statistics
-        running_corrects += torch.sum(preds == labels.data)
+        update_per_class_count(count, labels)
+        update_per_class_corrects(running_corrects, preds, labels)
+        # running_corrects += torch.sum(preds == labels.data)
         running_loss += loss.item() * inputs.size(0)
         
-    avg_acc = float(running_corrects)/count
-    avg_loss = float(running_loss)/count
-    return avg_loss, avg_acc
+    avg_acc = per_class_acc(running_corrects, count)
+    avg_loss = float(running_loss)/total
+    return avg_loss, avg_acc, running_corrects, count
         
 def get_dataset(train_val_subsets,
                 tp_idx,
@@ -892,6 +949,7 @@ def start_training(model_save_dir,
         epochs,
         eval_steps,
         tp_idx,
+        num_of_classes[0],
         ema_decay=ema_decay
     )
     return model, acc_result, best_result, avg_results
@@ -962,6 +1020,7 @@ def start_training_semi_supervised(model,
         model,
         hparam_mode,
         tp_idx,
+        num_of_classes,
         ema_decay,
         edge_matrix=edge_matrix,
         semi_supervised_alg=semi_supervised_alg,
@@ -980,6 +1039,7 @@ def start_training_semi_supervised(model,
         epochs,
         eval_steps,
         tp_idx,
+        num_of_classes,
         l_loss_func,
         coarse_loss_func,
         ssl_loss_func,
@@ -1029,7 +1089,7 @@ def start_experiment(data_dir: str, # where the data are saved
     if semi_supervised_alg:
         assert ratio_unlabeled_to_labeled == 1.0
     
-    if cl_mode == 'upper_bound':
+    if cl_mode in ['upper_bound', 'relabel_old']:
         assert semi_supervised_alg == None
         assert partial_feedback_mode == None
     
@@ -1044,18 +1104,17 @@ def start_experiment(data_dir: str, # where the data are saved
                               seed)
     makedirs(setup_dir)
     dataset_path = os.path.join(setup_dir, 'dataset.pt')
+    setup_mode = setups.SETUPS[setup_mode_str]
     if os.path.exists(dataset_path):
+        setups.download_dataset(data_dir, setup_mode)
         dataset = load_pickle(dataset_path)
     else:
-        setup_mode = setups.SETUPS[setup_mode_str]
         dataset = setups.generate_dataset(data_dir, setup_mode)
         save_obj_as_pickle(dataset_path, dataset)
         print(f"Dataset saved at {dataset_path}")
 
     train_val_subsets, testset, all_tp_info, leaf_idx_to_all_class_idx = dataset
 
-    # train_mode_str_check = get_exp_str_from_train_mode(train_mode, tp_idx=1)
-    # assert train_mode_str_check == train_mode_str
     train_mode = configs.TRAIN_MODES[train_mode_str]
     print("Only support two time periods for now..")
     for tp_idx in [0,1]:
@@ -1072,7 +1131,8 @@ def start_experiment(data_dir: str, # where the data are saved
                     exp_result_path = os.path.join(interim_exp_dir_tp_idx, "result.ckpt")
 
                     if os.path.exists(exp_result_path):
-                        print(f"{tp_idx} time period already finished for {hparams_str}")
+                        result = load_pickle(exp_result_path)
+                        print(f"{tp_idx} time period already finished for {hparams_str}. Best epoch: {result['best_result']['best_epoch']}. Best Test Per-Class Acc: {result['acc_result']['test']:.2%}")
                     else:
                         print(f"Run {train_mode_str} for TP {tp_idx}")
                         # exp_result do not exist, therefore start training
@@ -1145,9 +1205,11 @@ def start_experiment(data_dir: str, # where the data are saved
                 
                 edge_matrix = get_edge_matrix(leaf_idx_to_all_class_idx, superclass_time=tp_idx-1)
                 
-                
                 if os.path.exists(exp_result_path):
-                    print(f"{tp_idx} time period already finished for {hparams_str}")
+                    # print(f"{tp_idx} time period already finished for {hparams_str}")
+                    res = load_pickle(exp_result_path)
+                    print(
+                        f"{tp_idx} time period already finished for {hparams_str}. Best epoch: {res['best_result']['best_epoch']}. Best Test Per-Class Acc: {res['acc_result']['test']:.2%}")
                 else:
                     print(f"Run {train_mode_str} for TP {tp_idx}")
                     # exp_result do not exist, therefore start training

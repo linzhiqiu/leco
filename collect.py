@@ -1,8 +1,8 @@
 # python collect.py --data_dir /scratch/leco/ --hparam_candidate cifar --result_dir /data3/zhiqiul/leco_results/ --model_save_dir /data3/zhiqiul/self_supervised_models/wideres_28_2/ 
 # python collect.py --data_dir /scratch/leco/ --hparam_candidate cifar --result_dir /data3/zhiqiul/leco_results/ --model_save_dir /data3/zhiqiul/self_supervised_models/wideres_28_2/ --ema_decay 0.999
 
-# python collect.py --data_dir /scratch/leco/ --hparam_candidate inat --result_dir /data3/zhiqiul/leco_results/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet50/ --train_per_class True
-# python collect.py --data_dir /scratch/leco/ --hparam_candidate inat --result_dir /data3/zhiqiul/leco_results/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet50/ --ema_decay 0.999 --train_per_class True
+# python collect.py --data_dir /scratch/leco/ --hparam_candidate inat --result_dir /data3/zhiqiul/leco_results/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet50/
+# python collect.py --data_dir /scratch/leco/ --hparam_candidate inat --result_dir /data3/zhiqiul/leco_results/ --model_save_dir /data3/zhiqiul/self_supervised_models/resnet50/ --ema_decay 0.999
 
 import os
 import argparse
@@ -41,15 +41,6 @@ argparser.add_argument("--hparam_candidate",
                        default='cifar',
                        choices=hparams.HPARAM_CANDIDATES.keys(),
                        help="The hyperparameter candidates (str) for next time period")
-argparser.add_argument('--train_per_class',
-                       default=False,
-                       type=bool,
-                       help='Whether or not to use train_per_class.py')
-# argparser.add_argument("--train_mode_candidate",
-#                         type=str,
-#                         default='cifar',
-#                         choices=configs.ALL_TRAIN_MODES.keys(),
-#                         help="The train mode candidates for this setup")
 
 # For Inat all CL modes
 # SEED_LIST = [None]
@@ -282,12 +273,9 @@ def save_best_results(print_result_dir, result_dict, setup_mode, all_tp_info):
             file.write(tabulate(all_rows, headers=all_headers, tablefmt='orgtbl'))
             # print(f"Save at {tp_file}")
 
-def prepare_scripts(data_dir, result_dir, model_save_dir, setup_mode, train_mode_str, hparam_candidate, seed_list, ema_decay, train_per_class=False):
+def prepare_scripts(data_dir, result_dir, model_save_dir, setup_mode, train_mode_str, hparam_candidate, seed_list, ema_decay):
     scripts = []
-    if train_per_class:
-        script_file = "train_per_class.py"
-    else:
-        script_file = "train.py"
+    script_file = "train.py"
     if ema_decay:
         script_file += f" --ema_decay {ema_decay}"
     for seed in seed_list:
@@ -309,14 +297,10 @@ def prepare_scripts_for_time_1(data_dir,
                                partial_feedback_mode=None,
                                cl_mode='upper_bound',
                                hierarchical_semi_supervision=None,
-                               pl_threshold=None,
-                               train_per_class=False):
+                               pl_threshold=None):
     assert len(hparam_strs) == 1
     scripts = []
-    if train_per_class:
-        train_file = "train_per_class.py"
-    else:
-        train_file = "train.py"
+    train_file = "train.py"
     script_file = f"{train_file} --cl_mode {cl_mode} "
     if ema_decay:
         script_file += f" --ema_decay {ema_decay}"
@@ -406,13 +390,11 @@ def gather_exp(data_dir: str,
                PARTIAL_FEEDBACK_MODE=PARTIAL_FEEDBACK_MODE,
                SEMI_SUPERVISED_ALG=SEMI_SUPERVISED_ALG,
                hparam_candidate='cifar',
-            #    train_mode_candidate='cifar',
                train_mode_list=TRAIN_MODE_LIST,
                seed_list=SEED_LIST,
                PL_THRESHOLDS=PL_THRESHOLDS,
                HIERARCHICAL_SEMI_SUPERVISION=HIERARCHICAL_SEMI_SUPERVISION,
-               CL_MODES=CL_MODES,
-               train_per_class=False):
+               CL_MODES=CL_MODES):
     
     print_result_dir = os.path.join(result_dir, 'results')
     if ema_decay:
@@ -550,7 +532,6 @@ def gather_exp(data_dir: str,
                     hparam_candidate,
                     seed_list,
                     ema_decay,
-                    train_per_class=train_per_class
                 )
                 scripts_to_run += current_scripts
                 print(f"Setup {setup_mode}: {len(current_scripts)} scripts for train mode {train_mode_str}.")
@@ -744,7 +725,6 @@ def gather_exp(data_dir: str,
                                         cl_mode=cl_mode,
                                         hierarchical_semi_supervision=hierarchical_semi_supervision,
                                         pl_threshold=pl_threshold,
-                                        train_per_class=train_per_class
                                     )
                                     scripts_to_run += current_scripts
                                     # print(f"Setup {setup_mode}: {len(current_scripts)} scripts for train mode {train_mode_str} and config {configuration_dict_as_key}.")
@@ -763,6 +743,4 @@ if __name__ == '__main__':
                args.result_dir,
                args.model_save_dir,
                ema_decay=args.ema_decay,
-               hparam_candidate=args.hparam_candidate,
-               train_per_class=args.train_per_class)
-            #    train_mode_candidate=args.train_mode_candidate)
+               hparam_candidate=args.hparam_candidate)
