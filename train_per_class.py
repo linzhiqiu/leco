@@ -1,29 +1,9 @@
-def needs_redo(
-        cl_mode='use_new',
-        train_mode=None,
-        hparam_list=[],
-        ratio_unlabeled_to_labeled=1.0,
-        semi_supervised_alg=None,
-        pl_threshold=None,
-        partial_feedback_mode=None,
-        hierarchical_ssl=None,
-        finetuning_mode=None,
-        ema_decay=0.999
-    ):
-    return False
-    if semi_supervised_alg and hierarchical_ssl in ['conditioning', 'filtering_conditioning']:
-        return True
-    if semi_supervised_alg == 'Fixmatch':
-        return True
-    return False
-
-
 import os
 import argparse
 import random
 import numpy as np
 import configs
-from util import load_pickle, save_obj_as_pickle, makedirs, save_as_json, load_json
+from util import load_pickle, save_obj_as_pickle, makedirs, save_as_json
 from models import make_optimizer, make_scheduler, update_model_time_0, update_model, MultiHead
 import hparams
 import setups
@@ -40,21 +20,14 @@ from print_utils import get_exp_str_from_semi_args, \
 
 
 from typing import List
-from semi_supervised import DistillHard, DistillSoft, PseudoLabel, NoSSL, Fixmatch, PreconDistillHard, PreconDistillSoft
+from semi_supervised import DistillHard, DistillSoft, PseudoLabel, NoSSL, Fixmatch
 from tqdm import tqdm
 from ema import ModelEMA
 
 import torch
-import torchvision
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-SAVE_BEST_MODEL_FOR_TIME = [0] # only save best model up to time 0
-
-RATIO_UNLABELED_TO_LABELED = [
-    # The ratio of unlabeled data to labeled data in a batch
-    1.0,
-    # 3.0
-]
+SAVE_BEST_MODEL_FOR_TP = [0] # only save best model up to TP0
 
 SEMI_SUPERVISED_ALG = [
     None, # Not adding SSL loss
@@ -62,8 +35,6 @@ SEMI_SUPERVISED_ALG = [
     'Fixmatch', # Fixmatch with hard thresholding
     'DistillHard', # Self-training with distillation (hard-label cross entropy)
     'DistillSoft', # Self-training with distillation (soft-label KL divergence)
-    'PreconDistillHard', # Preconditioning Teacher: Self-training with distillation (hard-label cross entropy)
-    'PreconDistillSoft', # Preconditioning Teacher: Self-training with distillation (soft-label KL divergence)
 ]
 
 PL_THRESHOLDS = [
@@ -75,21 +46,14 @@ PL_THRESHOLDS = [
 
 PARTIAL_FEEDBACK_MODE = [
     None, # Ignoring history coarse-labels
-    'single_head', # Using partial feedback loss on single classification head for supervision on history coarse-labels
-    'two_head', # Using cross entropy loss on two seperate heads for supervision on history coarse-labels
+    'single_head', # Using LPL loss on single classification head for supervision on history coarse-labels
+    'two_head', # Using Joint loss on two seperate heads for supervision on history coarse-labels
 ]
 
 HIERARCHICAL_SEMI_SUPERVISION = [
     None, # Ignoring the coarse label information for history samples
     'filtering', # Filter out history samples with wrong predicted coarse-label
     'conditioning', # Enforce the pseudo-label to condition only on fine-labels belonging to ground truth coarse-label
-    # 'filtering_conditioning', # filtering + conditioning
-]
-
-FINETUNING = [
-    None, # No supervised finetuning
-    # 'finetune_entire', # Finetune entire model on current data for another round
-    # 'finetune_linear', # Finetune only the linear layer on current data for another round
 ]
 
 argparser = argparse.ArgumentParser()
@@ -109,18 +73,13 @@ argparser.add_argument("--setup_mode",
                         help="The dataset setup mode")
 argparser.add_argument("--cl_mode",
                         type=str,
-                        default='use_new',
+                        default='label_new',
                         choices=cl_mode.CL_MODES,
                         help="The continual learning setup. See cl_mode.py for more info.")
 argparser.add_argument('--ema_decay',
                        default=None,
                        type=float,
                        help='EMA decay rate. If none, then no ModelEMA is used.')
-argparser.add_argument("--ratio_unlabeled_to_labeled",
-                        type=float,
-                        default=1.0,
-                        choices=RATIO_UNLABELED_TO_LABELED,
-                        help="The ratio of unlabeled to labeled data in a batch")  
 argparser.add_argument("--semi_supervised_alg",
                         type=str,
                         default=None,
@@ -141,15 +100,6 @@ argparser.add_argument("--hierarchical_ssl",
                         default=None,
                         choices=HIERARCHICAL_SEMI_SUPERVISION,
                         help="The hierarchical semi-supervised mode to use. Default is None")
-argparser.add_argument("--finetuning_mode",
-                        type=str,
-                        default=None,
-                        choices=FINETUNING,
-                        help="The finetuning mode to use. Default is None")
-# argparser.add_argument("--distill_temp_T",
-#                        type=float,
-#                        default=1.0,
-#                        help="The softmax temperature for self-training")
 argparser.add_argument("--train_mode",
                        type=str,
                        default='wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_pt_linear',
@@ -361,7 +311,7 @@ def train(loaders,
             # best_result['best_loss'] = val_loss
             best_result['best_value'] = curr_value
             best_model = copy.deepcopy(eval_model.state_dict())
-            if tp_idx in SAVE_BEST_MODEL_FOR_TIME:
+            if tp_idx in SAVE_BEST_MODEL_FOR_TP:
                 best_result['best_model'] = best_model
         print(f"Epoch {epoch}: Average val Loss {val_loss:.4f}, Per-class Acc {val_acc:.2%}")
         
@@ -404,202 +354,6 @@ class ConditionalHead(torch.nn.Module):
     
     def forward(self, x):
         return [getattr(self, f"fc{idx}")(x) for idx in range(self.num_parents)]
-
-# class MultiHead(torch.nn.Module):
-#     def __init__(self, list_of_fcs):
-#         super().__init__()
-#         self.list_of_fcs = list_of_fcs
-#         for idx, fc in enumerate(list_of_fcs):
-#             setattr(self, f"fc{idx}", fc)
-    
-#     def forward(self, x):
-#         return [getattr(self, f"fc{idx}")(x) for idx in range(len(self.list_of_fcs))]
-def test_precondition(test_loader,
-                      model,
-                      tp_idx,
-                      num_of_class):
-    model = model.to(device).eval()
-    criterion = torch.nn.NLLLoss(reduction='mean')
-    running_corrects = {cls_idx: 0. for cls_idx in range(num_of_class)}
-    count = {cls_idx: 0 for cls_idx in range(num_of_class)}
-    running_loss = 0.
-    total = 0
-
-    for batch, data in enumerate(test_loader):
-        inputs, labels = data
-        total += inputs.size(0)
-
-        inputs = inputs.to(device)
-        # labels = labels[tp_idx].to(device)
-
-        with torch.set_grad_enabled(False):
-            outputs = model(inputs)
-            preds = torch.LongTensor([model.fc.parent_and_child_idx_to_leaf_idx[parent_idx][torch.argmax(outputs[parent_idx][idx])]
-                                      for idx, parent_idx in enumerate(labels[0])])
-
-            loss = 0.0
-            for idx, (parent_idx, leaf_idx) in enumerate(zip(labels[0], labels[1])):
-                log_probability = torch.nn.functional.log_softmax(outputs[parent_idx][idx], dim=0)
-                loss += - log_probability[model.fc.leaf_idx_to_child_idx[leaf_idx]]
-            loss = loss / inputs.shape[0]
-
-        # statistics
-        update_per_class_count(count, labels[tp_idx].data)
-        update_per_class_corrects(running_corrects, preds, labels[tp_idx].data)
-        # running_corrects += torch.sum(preds == labels[tp_idx].data)
-        running_loss += loss.item() * inputs.size(0)
-        
-    avg_acc = per_class_acc(running_corrects, count)
-    avg_loss = float(running_loss)/total
-    return avg_loss, avg_acc, running_corrects, count
-  
-
-def train_precondition(
-    loaders,
-    model,
-    optimizer,
-    scheduler,
-    epochs,
-    eval_steps,
-    tp_idx,
-    num_of_class,
-    edge_matrix,
-    select_criterion='acc_per_epoch',
-    ema_decay=None):
-    model.fc = ConditionalHead(model.fc, edge_matrix)
-    model = model.to(device)
-    if ema_decay != None:
-        ema_model = ModelEMA(model, ema_decay, device)
-    else:
-        ema_model = None
-    criterion = torch.nn.NLLLoss(reduction='mean')
-
-    avg_results = {'train': {'loss_per_epoch': [], 'acc_per_epoch': [], 'per_class_correct_per_epoch': [], 'per_class_count_per_epoch': []},
-                   'val':   {'loss_per_epoch': [], 'acc_per_epoch': [], 'per_class_correct_per_epoch': [], 'per_class_count_per_epoch': []},
-                   'test':  {'loss_per_epoch': [], 'acc_per_epoch': [], 'per_class_correct_per_epoch': [], 'per_class_count_per_epoch': []}}
-    phases = ['train', 'val', 'test']
-
-    # Save best model based on select_criterion
-    best_result = {
-                #    'best_loss': None, # overall loss at best epoch
-                #    'best_acc': 0, # overall acc at best epoch
-                   'best_value' : None, # Best value of select_criterion
-                   'best_epoch': None,
-                   'best_model': None,
-                   'best_criterion':select_criterion}
-    
-    best_model = None
-    for epoch in range(0, epochs):
-        print(f"Epoch {epoch}")
-        ### Training phase ###
-        model.train()
-
-        running_loss = 0.0
-        running_corrects = {cls_idx: 0. for cls_idx in range(num_of_class)}  # Overall correct count per class
-        count = {cls_idx: 0 for cls_idx in range(num_of_class)}  # Count per class
-        total = 0  # total count
-
-        loader_iter = iter(loaders['train'])
-        p_bar = tqdm(range(eval_steps))
-        for batch in range(eval_steps):
-            try:
-                data = loader_iter.next()
-            except:
-                loader_iter = iter(loaders['train'])
-                data = loader_iter.next()
-
-            inputs, labels = data
-
-            inputs = inputs.to(device)
-            total += inputs.size(0)
-            # labels = labels[tp_idx].to(device)
-
-            optimizer.zero_grad()
-
-            with torch.set_grad_enabled(True):
-                outputs = model(inputs)
-                # outputs = [outputs[parent_idx] for parent_idx in labels[0]]
-                preds = torch.LongTensor([model.fc.parent_and_child_idx_to_leaf_idx[parent_idx][torch.argmax(outputs[parent_idx][idx])]
-                                          for idx, parent_idx in enumerate(labels[0])])
-
-                loss = 0.0
-                for idx, (parent_idx, leaf_idx) in enumerate(zip(labels[0], labels[1])):
-                    log_probability = torch.nn.functional.log_softmax(outputs[parent_idx][idx], dim=0)
-                    loss += - log_probability[model.fc.leaf_idx_to_child_idx[leaf_idx]]
-                loss = loss / inputs.shape[0]
-                
-                loss.backward()
-                optimizer.step()
-                scheduler.step()
-                if ema_decay:
-                    ema_model.update(model)
-            
-            # statistics
-            running_loss += loss.item() * inputs.size(0)
-            update_per_class_count(count, labels[tp_idx])
-            update_per_class_corrects(running_corrects, preds, labels[tp_idx])
-            # running_corrects += torch.sum(preds == labels[tp_idx].data)
-            p_bar.set_description("Train Epoch: {epoch}/{epochs:4}. Iter: {batch:4}/{iter:4}. LR: {lr:.4f}. Loss: {loss:.4f}.".format(
-                epoch=epoch + 1,
-                epochs=epochs,
-                batch=batch + 1,
-                iter=eval_steps,
-                lr=scheduler.get_last_lr()[0],
-                loss=float(running_loss)/total))
-            p_bar.update()
-
-        p_bar.close()
-        avg_loss = float(running_loss)/total
-        avg_acc = per_class_acc(running_corrects, count)
-        avg_results['train']['loss_per_epoch'].append(avg_loss)
-        avg_results['train']['acc_per_epoch'].append(avg_acc)
-        avg_results['train']['per_class_correct_per_epoch'].append(running_corrects)
-        avg_results['train']['per_class_count_per_epoch'].append(count)
-        print(f"Epoch {epoch}: Average train Loss {avg_loss:.4f}, Per-class Acc {avg_acc:.2%}")
-        ### End of Training phase ###
-        
-        ### Val+Test phase ###
-        if ema_model:
-            eval_model = ema_model.ema # keep a pointer to current model for train
-        else:
-            eval_model = model
-
-        val_loss, val_acc, val_correct, val_count = test_precondition(loaders['val'], eval_model, tp_idx, num_of_class)
-        avg_results['val']['loss_per_epoch'].append(val_loss)
-        avg_results['val']['acc_per_epoch'].append(val_acc)
-        avg_results['val']['per_class_correct_per_epoch'].append(val_correct)
-        avg_results['val']['per_class_count_per_epoch'].append(val_count)
-        curr_value = avg_results['val'][select_criterion][-1]
-        if best_result['best_value'] == None or is_better(select_criterion, curr_value, best_result['best_value']):
-            print(
-                f"Best val {select_criterion} at epoch {epoch} being {curr_value}")
-            best_result['best_epoch'] = epoch
-            # best_result['best_acc'] = val_acc
-            # best_result['best_loss'] = val_loss
-            best_result['best_value'] = curr_value
-            best_model = copy.deepcopy(eval_model.state_dict())
-            if tp_idx in SAVE_BEST_MODEL_FOR_TIME:
-                best_result['best_model'] = best_model
-        print(f"Epoch {epoch}: Average val Loss {val_loss:.4f}, Per-class Acc {val_acc:.2%}")
-        
-        test_loss, test_acc, test_correct, test_count = test_precondition(loaders['test'], eval_model, tp_idx, num_of_class)
-        avg_results['test']['loss_per_epoch'].append(test_loss)
-        avg_results['test']['acc_per_epoch'].append(test_acc)
-        avg_results['test']['per_class_correct_per_epoch'].append(test_correct)
-        avg_results['test']['per_class_count_per_epoch'].append(test_count)
-        print(f"Epoch {epoch}: Average test Loss {test_loss:.4f}, Per-class Acc {test_acc:.2%}")
-        ### End of Val+Test phase ###
-        print()
-    print(f"Test Per-class Accuracy (for best val {select_criterion} model): {avg_results['test']['acc_per_epoch'][best_result['best_epoch']]:.2%}")
-    print(
-        f"Best Test Per-class Accuracy overall: {max(avg_results['test']['acc_per_epoch']):.2%}")
-    model.load_state_dict(best_model)
-    test_loss, test_acc, test_correct, test_count = test_precondition(loaders['test'], model, tp_idx, num_of_class)
-    print(f"Verify the best test per-class accuracy for best val {select_criterion} is indeed {test_acc:.2%}")
-    acc_result = {phase: avg_results[phase]['acc_per_epoch'][best_result['best_epoch']]
-                  for phase in phases}
-    return model, acc_result, best_result, avg_results
-
 
 def get_l_loss_func():
     nll_criterion = torch.nn.NLLLoss(reduction='mean')
@@ -692,55 +446,6 @@ def get_ssl_loss_func(
                 )
             else:
                 raise NotImplementedError()
-        elif semi_supervised_alg in ['PreconDistillHard', 'PreconDistillSoft']:
-            model_T = copy.deepcopy(model)
-            if isinstance(model_T.fc, MultiHead):
-                assert tp_idx == 1
-                model_T.fc = getattr(model_T.fc, f"fc{tp_idx}")
-            
-            epochs = math.ceil(hparam_mode['total_steps'] / hparam_mode['eval_steps'])
-            eval_steps = hparam_mode['eval_steps']
-            print(f"Train for {epochs} epochs each with {eval_steps} steps")
-
-            optimizer = make_optimizer(model_T,
-                                       hparam_mode['optim'],
-                                       hparam_mode['lr'],
-                                       weight_decay=hparam_mode['weight_decay'],
-                                       momentum=hparam_mode['momentum'])
-            scheduler = make_scheduler(optimizer,
-                                       hparam_mode['decay'],
-                                       hparam_mode['warmup_steps'],
-                                       hparam_mode['total_steps'])
-            
-            loaders['train'] = loaders['labeled']
-            model_T, acc_result, best_result, avg_results = train_precondition(
-                loaders,
-                model_T,
-                optimizer,
-                scheduler,
-                epochs,
-                eval_steps,
-                tp_idx,
-                num_of_classes[tp_idx],
-                edge_matrix,
-                ema_decay=ema_decay
-            )
-            print(f"Preconditioned Teacher achieves {acc_result['val']} val acc")
-            
-            if semi_supervised_alg == 'PreconDistillHard':
-                ssl_objective = PreconDistillHard(
-                    model_T,
-                    hierarchical_ssl=hierarchical_ssl,
-                    edge_matrix=edge_matrix
-                )
-            elif semi_supervised_alg == 'PreconDistillSoft':
-                ssl_objective = PreconDistillSoft(
-                    model_T,
-                    hierarchical_ssl=hierarchical_ssl,
-                    edge_matrix=edge_matrix
-                )
-            else:
-                raise NotImplementedError()
         elif semi_supervised_alg == 'PL':
             ssl_objective = PseudoLabel(
                 pl_threshold,
@@ -812,7 +517,7 @@ def train_semi_supervised(
         select_criterion: str='acc_per_epoch',
         ema_decay: float=None,
         use_both_weak_and_strong: bool=False, # True if using Fixmatch, where the unlabeled_inputs consists of both weak and strong aug images
-        cl_mode: str='use_new'
+        cl_mode: str='label_new'
     ):
     assert tp_idx == 1
 
@@ -914,15 +619,9 @@ def train_semi_supervised(
             count_unlabeled_ssl += unlabeled_inputs.size(0)
             unlabeled_inputs = unlabeled_inputs.to(device)
             
-            # if cl_mode == 'use_t_1_for_multi_task':
-            #     unlabeled_inputs_partial_feedback = torch.cat([unlabeled_inputs, labeled_inputs])
-            #     unlabeled_labels_partial_feedback = [torch.cat([u_label.to(device), l_label]) for u_label, l_label in zip(unlabeled_labels, labeled_labels)]
-            # else:
-            #     unlabeled_inputs_partial_feedback = unlabeled_inputs
-            #     unlabeled_labels_partial_feedback = unlabeled_labels
-            if cl_mode == "use_t_1_for_multi_task":
+            if cl_mode == "label_new":
                 curr_partial_count = unlabeled_inputs.size(0) + labeled_inputs.size(0)
-            elif cl_mode == "use_both_for_multi_task":
+            elif cl_mode == "upper_bound_with_multi_task":
                 curr_partial_count = labeled_inputs.size(0)
             else:
                 curr_partial_count = unlabeled_inputs.size(0)
@@ -955,13 +654,13 @@ def train_semi_supervised(
                 
                 if coarse_loss_func:
                     unlabeled_outputs = model(unlabeled_inputs)
-                    if cl_mode == 'use_t_1_for_multi_task':
+                    if cl_mode == 'label_new':
                         if type(unlabeled_outputs) == list:
                             unlabeled_outputs_partial_feedback = [torch.cat([u_out, l_out]) for u_out, l_out in zip(unlabeled_outputs, labeled_outputs)]
                         else:
                             unlabeled_outputs_partial_feedback = torch.cat([unlabeled_outputs, labeled_outputs])
                         unlabeled_labels_partial_feedback = [torch.cat([u_label.to(device), l_label]) for u_label, l_label in zip(unlabeled_labels, labeled_labels)]
-                    elif cl_mode == 'use_both_for_multi_task':
+                    elif cl_mode == 'upper_bound_with_multi_task':
                         unlabeled_outputs_partial_feedback = labeled_outputs
                         unlabeled_labels_partial_feedback = labeled_labels
                     else:
@@ -1050,7 +749,7 @@ def train_semi_supervised(
             best_result['best_value'] = curr_value
             best_result['best_stat'] = best_stats(epoch)
             best_model = copy.deepcopy(eval_model.state_dict())
-            if tp_idx in SAVE_BEST_MODEL_FOR_TIME:
+            if tp_idx in SAVE_BEST_MODEL_FOR_TP:
                 best_result['best_model'] = best_model
         print(f"Epoch {epoch}: Average val Loss {val_loss:.4f}, Per-class Acc {val_acc:.2%}")
         
@@ -1068,7 +767,7 @@ def train_semi_supervised(
         f"Best Test Per-class Accuracy overall: {max(avg_results['test']['acc_per_epoch']):.2%}")
     
     model_test = copy.deepcopy(model)
-    if isinstance(model_test.fc, MultiHead):
+    if isinstance(model_te˝st.fc, MultiHead):
         model_test.fc = getattr(model_test.fc, f"fc{tp_idx}")
     model_test.load_state_dict(best_model)
     test_loss, test_acc, test_correct, test_count = test(loaders['test'], eval_model, tp_idx, num_of_classes[tp_idx])
@@ -1117,31 +816,20 @@ def get_dataset(train_val_subsets,
                 cl_mode=None):
     assert tp_idx == 1
     assert cl_mode != None
-    if cl_mode in ['use_new', 'use_new_fine_for_coarse', 'use_new_fine_for_partial_feedback_only', 'use_t_1_for_multi_task']:
+    if cl_mode in ['label_new']:
         labeled_set = train_val_subsets[tp_idx][0]
         val_set = train_val_subsets[tp_idx][1]
         unlabeled_set = copy.deepcopy(train_val_subsets[0][0])
-    elif cl_mode == 'use_old':
+    elif cl_mode == 'relabel_old':
         labeled_set = train_val_subsets[0][0]
         val_set = train_val_subsets[0][1]
         unlabeled_set = copy.deepcopy(train_val_subsets[0][0])
-    elif cl_mode in ['use_both', 'use_both_for_multi_task']:
+    elif cl_mode in ['use_both', 'upper_bound_with_multi_task']:
         labeled_set = ConcatHierarchyDataset([train_val_subsets[i][0] for i in range(tp_idx+1)])
         val_set = ConcatHierarchyDataset([train_val_subsets[i][1] for i in range(tp_idx+1)])
         unlabeled_set = copy.deepcopy(train_val_subsets[0][0])
     else:
         raise NotImplementedError()
-    # elif cl_mode == 'use_new_fine_for_coarse':
-    #     labeled_set = train_val_subsets[tp_idx][0]
-    #     val_set = train_val_subsets[tp_idx][1]
-    #     unlabeled_set = ConcatHierarchyDataset([copy.deepcopy(train_val_subsets[i][0]) for i in range(tp_idx+1)])
-    # elif cl_mode == 'use_new_fine_for_partial_feedback_only':
-    #     labeled_set = train_val_subsets[tp_idx][0]
-    #     val_set = train_val_subsets[tp_idx][1]
-    #     unlabeled_set_partial_feedback = ConcatHierarchyDataset([copy.deepcopy(train_val_subsets[i][0]) for i in range(tp_idx+1)])
-    #     unlabeled_set_ssl = copy.deepcopy(train_val_subsets[0][0])
-    #     unlabeled_set = {'partial_feedback' : unlabeled_set_partial_feedback,
-    #                      'ssl' : unlabeled_set_ssl}
     return labeled_set, unlabeled_set, val_set
 
 def get_loaders(labeled_set,
@@ -1403,7 +1091,7 @@ def start_experiment(data_dir: str, # where the data are saved
     if semi_supervised_alg:
         assert ratio_unlabeled_to_labeled == 1.0
     
-    if cl_mode == 'use_both':
+    if cl_mode in ['upper_bound', 'relabel_old']:
         assert semi_supervised_alg == None
         assert partial_feedback_mode == None
     
@@ -1521,27 +1209,12 @@ def start_experiment(data_dir: str, # where the data are saved
                 
                 edge_matrix = get_edge_matrix(leaf_idx_to_all_class_idx, superclass_time=tp_idx-1)
                 
-                
-                to_redo = needs_redo(
-                    cl_mode=cl_mode,
-                    train_mode=train_mode,
-                    hparam_list=hparam_strs+[hparams_str],
-                    ratio_unlabeled_to_labeled=ratio_unlabeled_to_labeled,
-                    semi_supervised_alg=semi_supervised_alg,
-                    pl_threshold=pl_threshold,
-                    partial_feedback_mode=partial_feedback_mode,
-                    hierarchical_ssl=hierarchical_ssl,
-                    finetuning_mode=finetuning_mode,
-                    ema_decay=ema_decay
-                )
-                if os.path.exists(exp_result_path) and not to_redo:
+                if os.path.exists(exp_result_path):
                     # print(f"{tp_idx} time period already finished for {hparams_str}")
                     res = load_pickle(exp_result_path)
                     print(
                         f"{tp_idx} time period already finished for {hparams_str}. Best epoch: {res['best_result']['best_epoch']}. Best Test Per-Class Acc: {res['acc_result']['test']:.2%}")
                 else:
-                    if to_redo:
-                        print("Redoing the experiments!!") #TODO
                     print(f"Run {train_mode_str} for TP {tp_idx}")
                     # exp_result do not exist, therefore start training
                     new_model, acc_result, best_result, avg_results, stats = start_training_semi_supervised(

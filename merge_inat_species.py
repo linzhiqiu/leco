@@ -649,10 +649,10 @@ def get_train_val_indices(dataset, trainset, tp_buffers=None):
     return train_val_indices
 
 if __name__ == "__main__":
-    import setups
+    import setups_a
     import sys
     data_dir = '/scratch/leco/'
-    setup = setups.SETUPS['semi_inat_weakaug']
+    setup = setups_a.SETUPS['semi_inat_weakaug']
     print(f"==> Preparing {setup.dataset_name} data..")
     dataset = getattr(sys.modules[__name__], setup.dataset_name)(data_dir)
     all_tp_info, leaf_idx_to_all_class_idx = dataset.get_class_hierarchy()

@@ -19,7 +19,6 @@ import copy
 import train
 import cl_mode
 from print_utils import get_exp_str_from_ema_decay
-from train import needs_redo
 
 LATEX_FORMAT = True
 
@@ -56,9 +55,7 @@ argparser.add_argument('--train_per_class',
 # SEED_LIST = [None]
 # SEED_LIST = [None, 1, 10, 100, 1000]# TODO
 # PL_THRESHOLDS = train.PL_THRESHOLDS  # TODO
-# RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
 # HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
-# FINETUNING = train.FINETUNING
 # CL_MODES = cl_mode.CL_MODES
 # PARTIAL_FEEDBACK_MODE = [None]
 # SEMI_SUPERVISED_ALG = [None]  # TODO
@@ -69,75 +66,62 @@ argparser.add_argument('--train_per_class',
 # SEED_LIST = [None, 1, 10, 100, 1000]# TODO
 # # SEED_LIST = [None,]
 # PL_THRESHOLDS = train.PL_THRESHOLDS # TODO
-# RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
 # HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
-# FINETUNING = train.FINETUNING
 # CL_MODES = cl_mode.CL_MODES
 # PARTIAL_FEEDBACK_MODE=[None]
 # SEMI_SUPERVISED_ALG=[None] #TODO
 # TRAIN_MODE_LIST = configs.ALL_TRAIN_MODES['cifar'] # TODO
 
 
-# # # For SSL + single head/two head/None + use_t_1_for_multi_task
+# # # For SSL + single head/two head/None + label_new
 # SEED_LIST = [None, 1, 10, 100, 1000] #TODO
 # # SEED_LIST = [None]  # TODO
 # # SEED_LIST = [1]  # TODO
 # PL_THRESHOLDS = [0.95]
-# RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
 # HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
-# FINETUNING = train.FINETUNING
-# CL_MODES = ['use_t_1_for_multi_task']
+# CL_MODES = ['label_new']
 # PARTIAL_FEEDBACK_MODE=['single_head', 'two_head', None]
-# SEMI_SUPERVISED_ALG=["PreconDistillHard", "PreconDistillSoft", "DistillHard", "DistillSoft", "Fixmatch", "PL", None] #TODO
-# # SEMI_SUPERVISED_ALG=["PreconDistillHard", "PreconDistillSoft"] #TODO
+# SEMI_SUPERVISED_ALG=["DistillHard", "DistillSoft", "Fixmatch", "PL", None] #TODO
 # TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
 
-# use_both_for_multi_task + CIFAR
+# upper_bound_with_multi_task + CIFAR
 # SEED_LIST = [None, 1, 10, 100, 1000] #TODO
 # PL_THRESHOLDS = [0.95]
-# RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
 # HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
-# FINETUNING = train.FINETUNING
-# CL_MODES = ['use_both_for_multi_task']
+# CL_MODES = ['upper_bound_with_multi_task']
 # PARTIAL_FEEDBACK_MODE=['single_head', 'two_head']
 # SEMI_SUPERVISED_ALG=[None] #TODO
-# TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
+# # TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
 # TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_pt_linear']
 
-# INat upper bound + use_both_for_multi_task
+# INat upper bound + upper_bound_with_multi_task
 SEED_LIST = [None, 1, 10, 100, 1000] #TODO
-RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
 HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
-FINETUNING = train.FINETUNING
 
 PL_THRESHOLDS = [0.95]
-CL_MODES = ['use_both_for_multi_task']
+CL_MODES = ['upper_bound_with_multi_task']
 PARTIAL_FEEDBACK_MODE=['single_head', 'two_head']
 SEMI_SUPERVISED_ALG = [None]  # TODO
-TRAIN_MODE_LIST = ['resnet50_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
-# TRAIN_MODE_LIST = ['resnet50_scratch_0_finetune_pt_linear_1_finetune_pt_linear']
+# TRAIN_MODE_LIST = ['resnet50_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
+TRAIN_MODE_LIST = ['resnet50_scratch_0_finetune_pt_linear_1_finetune_pt_linear']
 
 # INat upper bound
 # SEED_LIST = [None, 1, 10, 100, 1000] #TODO
 # # SEED_LIST = [None]  # TODO
-# RATIO_UNLABELED_TO_LABELED = train.RATIO_UNLABELED_TO_LABELED
 # HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
-# FINETUNING = train.FINETUNING
 
 # PL_THRESHOLDS = [None]
-# # CL_MODES = ['use_both', 'use_t_1_for_multi_task', 'use_old']
-# CL_MODES = ['use_old']
+# # CL_MODES = ['upper_bound', 'label_new', 'relabel_old']
+# CL_MODES = ['relabel_old']
 # PARTIAL_FEEDBACK_MODE=[None]
 # SEMI_SUPERVISED_ALG=[None] #TODO
 # TRAIN_MODE_LIST = configs.ALL_TRAIN_MODES['inat']
 
 # PL_THRESHOLDS = [0.95]
-# CL_MODES = ['use_t_1_for_multi_task']
+# CL_MODES = ['label_new']
 # # PARTIAL_FEEDBACK_MODE=['single_head', 'two_head', None]
 # PARTIAL_FEEDBACK_MODE=['two_head']
-# # SEMI_SUPERVISED_ALG=["PreconDistillHard", "PreconDistillSoft", "DistillHard", "DistillSoft", "Fixmatch", "PL", None] #TODO
 # # SEMI_SUPERVISED_ALG=["DistillHard", "DistillSoft", "Fixmatch", "PL", None] #TODO
-# SEMI_SUPERVISED_ALG = ["DistillSoft"]  # TODO
 # TRAIN_MODE_LIST = ['resnet50_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
 
 # TRAIN_MODE_LIST = ['resnet50_imagenet_0_finetune_pt_linear_1_finetune_pt_linear']
@@ -323,11 +307,9 @@ def prepare_scripts_for_time_1(data_dir,
                                hparam_strs,
                                semi_supervised_alg=None,
                                partial_feedback_mode=None,
-                               cl_mode='use_both',
+                               cl_mode='upper_bound',
                                hierarchical_semi_supervision=None,
                                pl_threshold=None,
-                               ratio_unlabeled_to_labeled=1.0,
-                               finetuning_mode=None,
                                train_per_class=False):
     assert len(hparam_strs) == 1
     scripts = []
@@ -335,7 +317,7 @@ def prepare_scripts_for_time_1(data_dir,
         train_file = "train_per_class.py"
     else:
         train_file = "train.py"
-    script_file = f"{train_file} --cl_mode {cl_mode} --ratio_unlabeled_to_labeled {ratio_unlabeled_to_labeled}"
+    script_file = f"{train_file} --cl_mode {cl_mode} "
     if ema_decay:
         script_file += f" --ema_decay {ema_decay}"
     script_file += f" --setup_mode {setup_mode} --train_mode {train_mode_str} --hparam_candidate {hparam_candidate} --data_dir {data_dir} --model_save_dir {model_save_dir} --result_dir {result_dir}"
@@ -348,9 +330,6 @@ def prepare_scripts_for_time_1(data_dir,
     
     if pl_threshold:
         script_file += f" --pl_threshold {pl_threshold}"
-        
-    if finetuning_mode:
-        script_file += f" --finetuning_mode {finetuning_mode}"
         
     if partial_feedback_mode:
         script_file += f" --partial_feedback_mode {partial_feedback_mode}"
@@ -390,10 +369,8 @@ def save_t_1_res(print_result_dir_time_1, t_1_res):
         cl_mode = configuration_dict_as_key['cl_mode']
         hierarchical_semi_supervision = configuration_dict_as_key['hierarchical_semi_supervision']
         pl_threshold = configuration_dict_as_key['pl_threshold']
-        ratio_unlabeled_to_labeled = configuration_dict_as_key['ratio_unlabeled_to_labeled']
-        finetuning_mode = configuration_dict_as_key['finetuning_mode']
         
-        row = [train_mode_str, semi_supervised_alg, partial_feedback_mode, cl_mode, hierarchical_semi_supervision, pl_threshold, ratio_unlabeled_to_labeled, finetuning_mode]
+        row = [train_mode_str, semi_supervised_alg, partial_feedback_mode, cl_mode, hierarchical_semi_supervision, pl_threshold]
         
         t_1_epoch = get_mean_std_from_dict(t_1_result['best_epoch'], formatter="f")
         t_1_train_acc = get_mean_std_from_dict(t_1_result['train_acc'])
@@ -433,9 +410,7 @@ def gather_exp(data_dir: str,
                train_mode_list=TRAIN_MODE_LIST,
                seed_list=SEED_LIST,
                PL_THRESHOLDS=PL_THRESHOLDS,
-               RATIO_UNLABELED_TO_LABELED=RATIO_UNLABELED_TO_LABELED,
                HIERARCHICAL_SEMI_SUPERVISION=HIERARCHICAL_SEMI_SUPERVISION,
-               FINETUNING=FINETUNING,
                CL_MODES=CL_MODES,
                train_per_class=False):
     
@@ -449,12 +424,10 @@ def gather_exp(data_dir: str,
     t1_all_hparam_candidates = hparams.HPARAM_CANDIDATES[hparam_candidate]
     if hparam_candidate == 'inat':
         setup_list = ['semi_inat_strongaug']
-        if len(CL_MODES) == 1 and CL_MODES[0] == 'use_t_1_for_multi_task':
+        if len(CL_MODES) == 1 and CL_MODES[0] == 'label_new':
             t0_all_hparam_candidates = ['inat_lr_001_batch_60_wd_0001']
             t1_all_hparam_candidates = ['inat_lr_0001_batch_60_wd_0001']
-    finetuning_mode_list = FINETUNING
     cl_modes_list = CL_MODES
-    ratio_unlabeled_to_labeled_list = RATIO_UNLABELED_TO_LABELED
     
     result_dict = {}
     for setup_mode in setup_list:
@@ -591,13 +564,13 @@ def gather_exp(data_dir: str,
             #     import pdb; pdb.set_trace()
             ### For Time 1
             for cl_mode in cl_modes_list:
-                if cl_mode in ['use_old', 'use_both']:
+                if cl_mode in ['relabel_old', 'upper_bound']:
                     partial_feedback_mode_list = [None]
                     semi_supervised_alg_list = [None]
-                elif cl_mode in ['use_new', 'use_new_fine_for_coarse', 'use_new_fine_for_partial_feedback_only', 'use_t_1_for_multi_task']:
+                elif cl_mode in ['label_new']:
                     partial_feedback_mode_list = PARTIAL_FEEDBACK_MODE
                     semi_supervised_alg_list = SEMI_SUPERVISED_ALG
-                elif cl_mode in ['use_both_for_multi_task']:
+                elif cl_mode in ['upper_bound_with_multi_task']:
                     partial_feedback_mode_list = PARTIAL_FEEDBACK_MODE
                     semi_supervised_alg_list = [None]
                 else:
@@ -608,7 +581,7 @@ def gather_exp(data_dir: str,
                             hierarchical_semi_supervision_list = HIERARCHICAL_SEMI_SUPERVISION
                             if semi_supervised_alg in ['Fixmatch', 'PL']:
                                 pl_thresholds_list = PL_THRESHOLDS
-                            elif semi_supervised_alg in ['DistillHard', 'DistillSoft', 'PreconDistillHard', 'PreconDistillSoft']:
+                            elif semi_supervised_alg in ['DistillHard', 'DistillSoft']:
                                 pl_thresholds_list = [None]
                             else:
                                 raise NotImplementedError()
@@ -629,174 +602,154 @@ def gather_exp(data_dir: str,
                         t_1_res = []
                         for hierarchical_semi_supervision in hierarchical_semi_supervision_list:
                             for pl_threshold in pl_thresholds_list:
-                                for ratio_unlabeled_to_labeled in ratio_unlabeled_to_labeled_list:
-                                    for finetuning_mode in finetuning_mode_list:
-                                        all_results = {}
-                                        best_hparam_str = None
-                                        
-                                        best_test_acc_mean = None
-                                        all_hparam_candidates_are_ready = True
-                                        
-                                        for hparam_str in t1_all_hparam_candidates:
-                                            tp_results = [] # all seeds results
-                                            for setup_dir in setup_dirs:
-                                                train_semi_supervised_dir = get_semi_supervised_dir(
-                                                    setup_dir,
-                                                    ema_decay=ema_decay,
-                                                    train_mode=train_mode,
-                                                    cl_mode=cl_mode,
-                                                    hparam_list=best_hparam_list + [hparam_str],
-                                                    ratio_unlabeled_to_labeled=ratio_unlabeled_to_labeled,
-                                                    semi_supervised_alg=semi_supervised_alg,
-                                                    pl_threshold=pl_threshold,
-                                                    partial_feedback_mode=partial_feedback_mode,
-                                                    hierarchical_ssl=hierarchical_semi_supervision,
-                                                    finetuning_mode=finetuning_mode,
-                                                    tp_idx=1
-                                                )
-                                                to_redo = needs_redo(
-                                                    cl_mode=cl_mode,
-                                                    train_mode=train_mode,
-                                                    hparam_list=best_hparam_list+[hparam_str],
-                                                    ratio_unlabeled_to_labeled=ratio_unlabeled_to_labeled,
-                                                    semi_supervised_alg=semi_supervised_alg,
-                                                    pl_threshold=pl_threshold,
-                                                    partial_feedback_mode=partial_feedback_mode,
-                                                    hierarchical_ssl=hierarchical_semi_supervision,
-                                                    finetuning_mode=finetuning_mode,
-                                                    ema_decay=ema_decay
-                                                )
-                                                exp_result_path = os.path.join(train_semi_supervised_dir,
-                                                                               'result.ckpt')
-                                                if os.path.exists(exp_result_path) and not to_redo:
-                                                    try:
-                                                        exp_result = load_pickle(exp_result_path)
-                                                    except:
-                                                        print(exp_result_path + " truncated?")
-                                                        import pdb; pdb.set_trace()
-                                                        all_hparam_candidates_are_ready = False
-                                                        break
-                                                    best_epoch = exp_result['best_result']['best_epoch']
-                                                    best_stats = exp_result['best_result']['best_stat']
-                                                    train_acc = exp_result['acc_result']['train']
-                                                    test_acc = exp_result['acc_result']['test']
-                                                    tp_results.append({
-                                                        'best_epoch' : best_epoch,
-                                                        'mask_rate' : best_stats['mask_rate'],
-                                                        'impurity' : best_stats['impurity'],
-                                                        'coarse_accuracy' : best_stats['coarse_accuracy'],
-                                                        'coarse_accuracy_masked' : best_stats['coarse_accuracy_masked'],
-                                                        'mask_rate_filtered' : best_stats['mask_rate_filtered'],
-                                                        'impurity_filtered' : best_stats['impurity_filtered'],
-                                                        'train_acc' : train_acc,
-                                                        'test_acc' : test_acc
-                                                    })
-                                                    if hparam_candidate == 'inat':
-                                                        print(f"TP1: {hparam_str} {setup_mode} {train_mode_str} {cl_mode}: Train {train_acc} and test acc {test_acc}")
-                                                else:
-                                                    all_hparam_candidates_are_ready = False
-                                                    if hparam_candidate == 'inat':
-                                                        # import pdb; pdb.set_trace()
-                                                        continue
-                                                    break
-                                            
-                                            # if hparam_candidate == 'inat':
-                                            #     continue
-                                            if not all_hparam_candidates_are_ready:
+                                all_results = {}
+                                best_hparam_str = None
+                                
+                                best_test_acc_mean = None
+                                all_hparam_candidates_are_ready = True
+                                
+                                for hparam_str in t1_all_hparam_candidates:
+                                    tp_results = [] # all seeds results
+                                    for setup_dir in setup_dirs:
+                                        train_semi_supervised_dir = get_semi_supervised_dir(
+                                            setup_dir,
+                                            ema_decay=ema_decay,
+                                            train_mode=train_mode,
+                                            cl_mode=cl_mode,
+                                            hparam_list=best_hparam_list + [hparam_str],
+                                            semi_supervised_alg=semi_supervised_alg,
+                                            pl_threshold=pl_threshold,
+                                            partial_feedback_mode=partial_feedback_mode,
+                                            hierarchical_ssl=hierarchical_semi_supervision,
+                                            tp_idx=1
+                                        )
+                                        exp_result_path = os.path.join(train_semi_supervised_dir,
+                                                                        'result.ckpt')
+                                        if os.path.exists(exp_result_path):
+                                            try:
+                                                exp_result = load_pickle(exp_result_path)
+                                            except:
+                                                print(exp_result_path + " truncated?")
+                                                import pdb; pdb.set_trace()
+                                                all_hparam_candidates_are_ready = False
                                                 break
-                                            
-                                            # summarize the results and put into all_results
-                                            best_epoch_mean, best_epoch_std = mean_std_from_dict(tp_results, 'best_epoch')
-                                            train_acc_mean, train_acc_std = mean_std_from_dict(tp_results, 'train_acc')
-                                            test_acc_mean, test_acc_std = mean_std_from_dict(tp_results, 'test_acc')
-                                            mask_rate_mean, mask_rate_std = mean_std_from_dict(tp_results, 'mask_rate')
-                                            impurity_mean, impurity_std = mean_std_from_dict(tp_results, 'impurity')
-                                            coarse_accuracy_mean, coarse_accuracy_std = mean_std_from_dict(tp_results, 'coarse_accuracy')
-                                            coarse_accuracy_masked_mean, coarse_accuracy_masked_std = mean_std_from_dict(tp_results, 'coarse_accuracy_masked')
-                                            mask_rate_filtered_mean, mask_rate_filtered_std = mean_std_from_dict(tp_results, 'mask_rate_filtered')
-                                            impurity_filtered_mean, impurity_filtered_std = mean_std_from_dict(tp_results, 'impurity_filtered')
-                                            all_results[hparam_str] = {
-                                                'best_epoch' : {'mean' : best_epoch_mean,
-                                                                'std'  : best_epoch_std},
-                                                'train_acc' : {'mean' : train_acc_mean,
-                                                                'std'  : train_acc_std},
-                                                'test_acc' : {'mean' : test_acc_mean,
-                                                                'std'  : test_acc_std},
-                                                'mask_rate' : {'mean' : mask_rate_mean,
-                                                                'std'  : mask_rate_std},
-                                                'impurity' : {'mean' : impurity_mean,
-                                                                'std'  : impurity_std},
-                                                'coarse_accuracy' : {'mean' : coarse_accuracy_mean,
-                                                                        'std'  : coarse_accuracy_std},
-                                                'coarse_accuracy_masked' : {'mean' : coarse_accuracy_masked_mean,
-                                                                            'std'  : coarse_accuracy_masked_std},
-                                                'mask_rate_filtered' : {'mean' : mask_rate_filtered_mean,
-                                                                        'std'  : mask_rate_filtered_std},
-                                                'impurity_filtered' : {'mean' : impurity_filtered_mean,
-                                                                        'std'  : impurity_filtered_std},
-                                                'tp_results' : tp_results,
-                                            }
-                                            if best_test_acc_mean is None or test_acc_mean > best_test_acc_mean:
-                                                best_test_acc_mean = test_acc_mean
-                                                best_hparam_str = hparam_str
-                                        
-                                        
-                                        configuration_dict_as_key = {
-                                            'print_result_dir_time_1' : print_result_dir_time_1,
-                                            'train_mode_str' : train_mode_str,
-                                            'semi_supervised_alg' : semi_supervised_alg,
-                                            'partial_feedback_mode' : partial_feedback_mode,
-                                            'cl_mode' : cl_mode,
-                                            'hierarchical_semi_supervision' : hierarchical_semi_supervision,
-                                            'pl_threshold' : pl_threshold,
-                                            'ratio_unlabeled_to_labeled' : ratio_unlabeled_to_labeled,
-                                            'finetuning_mode' : finetuning_mode,
-                                        }
-                                        if all_hparam_candidates_are_ready:
-                                            # all haparams and all seeds are ready
-                                            # write the results
-                                            
-                                            assert best_hparam_list[0] == result_dict[setup_mode][train_mode_str][0]['best_hparam_str']
-                                            
-                                            # t_1_result = {
-                                            #     'tp_idx' : 1,
-                                            #     'best_hparam_str' : best_hparam_str,
-                                            #     'hparam_strs' : copy.deepcopy(best_hparam_list), # up to this tp_idx
-                                            #     'all_results' : copy.deepcopy(all_results),
-                                            # }
-                                            t_0_best_hparam = best_hparam_list[0]
-                                            t_0_result = result_dict[setup_mode][train_mode_str][0]['all_results'][best_hparam_list[0]]
-                                            t_1_best_hparam = best_hparam_str
-                                            t_1_result = all_results[t_1_best_hparam]
-                                            res = [configuration_dict_as_key, t_0_result, t_0_best_hparam, t_1_result, t_1_best_hparam]
-                                            t_1_res.append(res)
-                                            # all_t_1_res.append(res)
-                                            # print(f"For setup {setup_mode}, train mode {train_mode_str}, tp 1, config {configuration_dict_as_key}, the best hparam is {best_hparam_str} with test acc {best_test_acc_mean}")
+                                            best_epoch = exp_result['best_result']['best_epoch']
+                                            best_stats = exp_result['best_result']['best_stat']
+                                            train_acc = exp_result['acc_result']['train']
+                                            test_acc = exp_result['acc_result']['test']
+                                            tp_results.append({
+                                                'best_epoch' : best_epoch,
+                                                'mask_rate' : best_stats['mask_rate'],
+                                                'impurity' : best_stats['impurity'],
+                                                'coarse_accuracy' : best_stats['coarse_accuracy'],
+                                                'coarse_accuracy_masked' : best_stats['coarse_accuracy_masked'],
+                                                'mask_rate_filtered' : best_stats['mask_rate_filtered'],
+                                                'impurity_filtered' : best_stats['impurity_filtered'],
+                                                'train_acc' : train_acc,
+                                                'test_acc' : test_acc
+                                            })
+                                            if hparam_candidate == 'inat':
+                                                print(f"TP1: {hparam_str} {setup_mode} {train_mode_str} {cl_mode}: Train {train_acc} and test acc {test_acc}")
                                         else:
-                                            # prepare scripts for this tp_idx
-                                            current_scripts = prepare_scripts_for_time_1(
-                                                data_dir,
-                                                result_dir,
-                                                model_save_dir,
-                                                setup_mode,
-                                                train_mode_str,
-                                                hparam_candidate,
-                                                seed_list,
-                                                ema_decay,
-                                                best_hparam_list,
-                                                semi_supervised_alg=semi_supervised_alg,
-                                                partial_feedback_mode=partial_feedback_mode,
-                                                cl_mode=cl_mode,
-                                                hierarchical_semi_supervision=hierarchical_semi_supervision,
-                                                pl_threshold=pl_threshold,
-                                                ratio_unlabeled_to_labeled=ratio_unlabeled_to_labeled,
-                                                finetuning_mode=finetuning_mode,
-                                                train_per_class=train_per_class
-                                            )
-                                            scripts_to_run += current_scripts
-                                            # print(f"Setup {setup_mode}: {len(current_scripts)} scripts for train mode {train_mode_str} and config {configuration_dict_as_key}.")
+                                            all_hparam_candidates_are_ready = False
+                                            if hparam_candidate == 'inat':
+                                                # import pdb; pdb.set_trace()
+                                                continue
                                             break
-                        
+                                    
+                                    # if hparam_candidate == 'inat':
+                                    #     continue
+                                    if not all_hparam_candidates_are_ready:
+                                        break
+                                    
+                                    # summarize the results and put into all_results
+                                    best_epoch_mean, best_epoch_std = mean_std_from_dict(tp_results, 'best_epoch')
+                                    train_acc_mean, train_acc_std = mean_std_from_dict(tp_results, 'train_acc')
+                                    test_acc_mean, test_acc_std = mean_std_from_dict(tp_results, 'test_acc')
+                                    mask_rate_mean, mask_rate_std = mean_std_from_dict(tp_results, 'mask_rate')
+                                    impurity_mean, impurity_std = mean_std_from_dict(tp_results, 'impurity')
+                                    coarse_accuracy_mean, coarse_accuracy_std = mean_std_from_dict(tp_results, 'coarse_accuracy')
+                                    coarse_accuracy_masked_mean, coarse_accuracy_masked_std = mean_std_from_dict(tp_results, 'coarse_accuracy_masked')
+                                    mask_rate_filtered_mean, mask_rate_filtered_std = mean_std_from_dict(tp_results, 'mask_rate_filtered')
+                                    impurity_filtered_mean, impurity_filtered_std = mean_std_from_dict(tp_results, 'impurity_filtered')
+                                    all_results[hparam_str] = {
+                                        'best_epoch' : {'mean' : best_epoch_mean,
+                                                        'std'  : best_epoch_std},
+                                        'train_acc' : {'mean' : train_acc_mean,
+                                                        'std'  : train_acc_std},
+                                        'test_acc' : {'mean' : test_acc_mean,
+                                                        'std'  : test_acc_std},
+                                        'mask_rate' : {'mean' : mask_rate_mean,
+                                                        'std'  : mask_rate_std},
+                                        'impurity' : {'mean' : impurity_mean,
+                                                        'std'  : impurity_std},
+                                        'coarse_accuracy' : {'mean' : coarse_accuracy_mean,
+                                                                'std'  : coarse_accuracy_std},
+                                        'coarse_accuracy_masked' : {'mean' : coarse_accuracy_masked_mean,
+                                                                    'std'  : coarse_accuracy_masked_std},
+                                        'mask_rate_filtered' : {'mean' : mask_rate_filtered_mean,
+                                                                'std'  : mask_rate_filtered_std},
+                                        'impurity_filtered' : {'mean' : impurity_filtered_mean,
+                                                                'std'  : impurity_filtered_std},
+                                        'tp_results' : tp_results,
+                                    }
+                                    if best_test_acc_mean is None or test_acc_mean > best_test_acc_mean:
+                                        best_test_acc_mean = test_acc_mean
+                                        best_hparam_str = hparam_str
+                                
+                                
+                                configuration_dict_as_key = {
+                                    'print_result_dir_time_1' : print_result_dir_time_1,
+                                    'train_mode_str' : train_mode_str,
+                                    'semi_supervised_alg' : semi_supervised_alg,
+                                    'partial_feedback_mode' : partial_feedback_mode,
+                                    'cl_mode' : cl_mode,
+                                    'hierarchical_semi_supervision' : hierarchical_semi_supervision,
+                                    'pl_threshold' : pl_threshold,
+                                }
+                                if all_hparam_candidates_are_ready:
+                                    # all haparams and all seeds are ready
+                                    # write the results
+                                    
+                                    assert best_hparam_list[0] == result_dict[setup_mode][train_mode_str][0]['best_hparam_str']
+                                    
+                                    # t_1_result = {
+                                    #     'tp_idx' : 1,
+                                    #     'best_hparam_str' : best_hparam_str,
+                                    #     'hparam_strs' : copy.deepcopy(best_hparam_list), # up to this tp_idx
+                                    #     'all_results' : copy.deepcopy(all_results),
+                                    # }
+                                    t_0_best_hparam = best_hparam_list[0]
+                                    t_0_result = result_dict[setup_mode][train_mode_str][0]['all_results'][best_hparam_list[0]]
+                                    t_1_best_hparam = best_hparam_str
+                                    t_1_result = all_results[t_1_best_hparam]
+                                    res = [configuration_dict_as_key, t_0_result, t_0_best_hparam, t_1_result, t_1_best_hparam]
+                                    t_1_res.append(res)
+                                    # all_t_1_res.append(res)
+                                    # print(f"For setup {setup_mode}, train mode {train_mode_str}, tp 1, config {configuration_dict_as_key}, the best hparam is {best_hparam_str} with test acc {best_test_acc_mean}")
+                                else:
+                                    # prepare scripts for this tp_idx
+                                    current_scripts = prepare_scripts_for_time_1(
+                                        data_dir,
+                                        result_dir,
+                                        model_save_dir,
+                                        setup_mode,
+                                        train_mode_str,
+                                        hparam_candidate,
+                                        seed_list,
+                                        ema_decay,
+                                        best_hparam_list,
+                                        semi_supervised_alg=semi_supervised_alg,
+                                        partial_feedback_mode=partial_feedback_mode,
+                                        cl_mode=cl_mode,
+                                        hierarchical_semi_supervision=hierarchical_semi_supervision,
+                                        pl_threshold=pl_threshold,
+                                        train_per_class=train_per_class
+                                    )
+                                    scripts_to_run += current_scripts
+                                    # print(f"Setup {setup_mode}: {len(current_scripts)} scripts for train mode {train_mode_str} and config {configuration_dict_as_key}.")
+                                    break
+                
                         save_t_1_res(print_result_dir_time_1, t_1_res)
             
         print(f"Setup {setup_mode}: Total {len(scripts_to_run)} scripts.")

@@ -1,9 +1,6 @@
 CL_MODES = [
-    'use_new', # Use the new sampled images
-    # 'use_new_fine_for_coarse', # Use the new sampled images for labeled set, but use both new and old images for coarse-supervision (SSL + partial feedback)
-    # 'use_new_fine_for_partial_feedback_only', # Use the new sampled images for labeled set, but use both new and old for partial feedback (not ssl)
-    'use_t_1_for_multi_task', # (Updated version) Use the new sampled images for labeled set, but use both new and old for partial feedback (not ssl)
-    'use_old', # Use the images from previous time
-    'use_both', # Use both the new and old images (no semi supervised learning)
-    'use_both_for_multi_task', # (Updated version) Use T0+T1 sampled images for labeled set + partial feedback (no ssl)
+    'label_new', # Use current TP images for labeled set, use all cumulative images for Joint/LPL, and use old images for SSL
+    'relabel_old', # Keep using images from TP0 (do not support Joint/LPL/SSL)
+    'upper_bound', # Assume all TP images have finest labels (do not support Joint/LPL/SSL)
+    'upper_bound_with_multi_task', # (Only support two TPs) Use T0+T1 sampled images for labeled set + Joint or LPL (no ssl)
 ]
