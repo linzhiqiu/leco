@@ -63,7 +63,7 @@ def update_model(model,
                  num_class,
                  partial_feedback_mode):
     assert tp_idx > 0
-    assert model != None
+    assert model is not None
     extractor_mode = train_mode.tp_configs[tp_idx].extractor_mode
     classifier_mode = train_mode.tp_configs[tp_idx].classifier_mode
     
@@ -87,9 +87,9 @@ def update_model(model,
     else:
         raise NotImplementedError()
     
-    if partial_feedback_mode == 'two_head':
+    if partial_feedback_mode == 'joint':
         model.fc = MultiHead([old_fc, new_fc])
-    elif partial_feedback_mode in [None, 'single_head']:
+    elif partial_feedback_mode in [None, 'lpl']:
         model.fc = new_fc
     else:
         raise NotImplementedError()
@@ -106,6 +106,66 @@ def update_model(model,
         raise NotImplementedError()
 
     return model
+
+
+def update_model_multiple_tp(model,
+                             model_save_dir,
+                             tp_idx,
+                             train_mode,
+                             num_class,
+                             partial_feedback_mode):
+    assert tp_idx > 0
+    assert model is not None
+    extractor_mode = train_mode.tp_configs[tp_idx].extractor_mode
+    classifier_mode = train_mode.tp_configs[tp_idx].classifier_mode
+    
+    old_fc = copy.deepcopy(model.fc)
+    
+    fc_size = get_fc_size(train_mode.arch)
+    if extractor_mode in ['finetune_pt', 'freeze_pt']:
+        model = load_from_checkpoint(
+            model_save_dir,
+            train_mode.arch,
+            train_mode.pretrain
+        )
+    elif extractor_mode in ['finetune_prev', 'freeze_prev']:
+        print("resume from previous feature extractor checkpoint")
+        pass
+    else:
+        raise NotImplementedError()
+
+    if classifier_mode == 'linear':
+        new_fc = torch.nn.Linear(fc_size, num_class)
+    else:
+        raise NotImplementedError()
+    
+    if partial_feedback_mode == 'joint':
+        if type(old_fc) == MultiHead:
+            assert tp_idx > 1
+            model.fc = MultiHead(old_fc.list_of_fcs + [new_fc])
+        elif type(old_fc) == type(new_fc):
+            assert tp_idx == 1
+            model.fc = MultiHead([old_fc, new_fc])
+        else:
+            raise NotImplementedError()
+    elif partial_feedback_mode in [None, 'lpl']:
+        model.fc = new_fc
+    else:
+        raise NotImplementedError()
+    
+    if extractor_mode in ['finetune_pt', 'finetune_prev']:
+        for p in model.parameters():
+            p.requires_grad = True
+    elif extractor_mode in ['freeze_pt', 'freeze_prev']:
+        for p in model.parameters():
+            p.requires_grad = False
+        for p in model.fc.parameters():
+            p.requires_grad = True
+    else:
+        raise NotImplementedError()
+
+    return model
+
 
 def make_optimizer(network, optim, lr, weight_decay, momentum=0.9):
     if optim == 'sgd':

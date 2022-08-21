@@ -83,7 +83,7 @@ CIFAR_MODES = {
     "wideres_28_2_moco_v2_stl10_0_finetune_pt_linear_1_freeze_prev_linear" : TrainMode(
         "wideres_28_2",
         'moco_v2_stl10',
-        [Phase('finetune_pt', 'linear'),Phase('freeze_prev', 'linear'),]
+        [Phase('finetune_pt', 'linear'), Phase('freeze_prev', 'linear'),]
     ),
 }
 
@@ -132,12 +132,30 @@ INAT_MODES = {
     ),
 }
 
+INAT_MODES_4_TPS = {
+    # Resnet50 for inat
+    "resnet50_scratch_train_scratch": TrainMode(
+        "resnet50",
+        'scratch',
+        [Phase('finetune_pt', 'linear'), Phase('finetune_pt', 'linear'),
+         Phase('finetune_pt', 'linear'), Phase('finetune_pt', 'linear'),]
+    ),
+    "resnet50_scratch_finetune_prev": TrainMode(
+        "resnet50",
+        'scratch',
+        [Phase('finetune_pt', 'linear'), Phase('finetune_prev', 'linear'),
+         Phase('finetune_prev', 'linear'), Phase('finetune_prev', 'linear'),]
+    ),
+}
+
 TRAIN_MODES = {
     **CIFAR_MODES,
     **INAT_MODES,
+    **INAT_MODES_4_TPS,
 }
 
 ALL_TRAIN_MODES = {
-    'cifar' : CIFAR_MODES,
-    'inat' : INAT_MODES
+    'cifar': CIFAR_MODES,
+    'inat': INAT_MODES,
+    'inat_4_tps': INAT_MODES_4_TPS,
 }

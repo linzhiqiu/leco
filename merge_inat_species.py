@@ -474,63 +474,6 @@ def collapse(curr_tree):
             raise ValueError("Nodes can only be LeafClass or dict")
     return curr_tree
 
-
-def make_other_class_with_minor_nodes(tree, fewest):
-    assert fewest > 0
-    import import pdb; pdb.set_trace()
-
-def merge_tree(hierachy, nums_of_leaf, fewest_num_samples=None):
-    new_hierarchy = []
-    curr_tree = collapse(hierachy)
-    for num_of_leaf in reversed(nums_of_leaf):
-        curr_num_of_leaf = num_of_leaf_of_tree(curr_tree)
-        while curr_num_of_leaf > num_of_leaf:
-            merge_smallest_pair_of_leaf(curr_tree)
-            curr_tree = collapse(curr_tree)
-            assert num_of_leaf_of_tree(curr_tree) == curr_num_of_leaf - 1
-            curr_num_of_leaf -= 1
-        
-        if fewest_num_samples:
-            curr_hierarchy = make_other_class_with_minor_nodes(deepcopy(curr_tree), fewest_num_samples)
-        else:
-            curr_hierarchy = deepcopy(curr_tree)
-        new_hierarchy.append(curr_hierarchy)
-    return list(reversed(new_hierarchy))
-
-
-def get_all_tp_hierarchy(hierachy, nums_of_leaf, fewest_num_samples=None):
-    num_of_species = num_of_leaf_of_tree(collapse(deepcopy(hierachy)))
-    assert num_of_species == 810
-    leaf_idx_to_all_class_idx = {
-        species_idx : []
-        for species_idx in range(num_of_species)
-    } # leaf_idx_to_all_class_idx[leaf_idx][super_class_time] = super_class_idx at super_class_time of this leaf class 
-    tp_hierarchy = merge_tree(hierachy, nums_of_leaf, fewest_num_samples)
-    all_tp_info = []
-    # return all_tp_info, leaf_idx_to_all_class_idx, tp_hierarchy
-    # import pdb; pdb.set_trace()
-    
-    for tp_idx in range(len(nums_of_leaf)-1, -1, -1):
-        leaves = flatten_tree(tp_hierarchy[tp_idx])
-        tp_info = {
-            'tp_name' : str(tp_idx),
-            'tp_idx' : tp_idx,
-            'all_classes' : list(range(len(leaves))),
-            'num_of_classes': len(leaves),
-            'idx_to_leaf_name': {idx: str(idx) for idx in range(len(leaves))},
-            'leaf_name_to_idx': {str(idx): idx for idx in range(len(leaves))},
-        }
-        num_of_leaf = nums_of_leaf[tp_idx]
-        tp_name = str(tp_idx)
-        for species_idx in range(num_of_species):
-            for idx, leaf in enumerate(leaves):
-                if species_idx in leaf.species:
-                    leaf_idx_to_all_class_idx[species_idx] = [idx] + leaf_idx_to_all_class_idx[species_idx]
-        
-    for i, tp_info in enumerate(all_tp_info):
-        assert tp_info['tp_idx'] == i
-    return all_tp_info, leaf_idx_to_all_class_idx, tp_hierarchy
-
 def flatten_tree(curr_tree):
     """Return all LeafClass in a list
     """
@@ -630,6 +573,26 @@ class SemiInat2021StrongAug(SemiInat2021):
     
     def get_transform_train(self):
         return get_inat_transform_train_strong_aug()
+
+def samples_per_class(dataset, all_tp_info, leaf_idx_to_all_class_idx):
+    tp = len(leaf_idx_to_all_class_idx[0])
+    sample_stats = {
+        tp_idx: {
+            label_idx: 0.
+            for label_idx in set([label for label in [leaf_idx_to_all_class_idx[k][tp_idx] for k in leaf_idx_to_all_class_idx]])
+        }
+        for tp_idx in range(tp)
+    }
+    for _, target in dataset:
+        for tp_idx, target_idx in enumerate(target):
+            sample_stats[tp_idx][target_idx] += 1
+    sorted_stats = {}
+    for tp_idx in sample_stats:
+        sorted_label_indices = sorted(sample_stats[tp_idx].keys(), key=lambda k: sample_stats[tp_idx][k])
+        sorted_sample_num = [sample_stats[tp_idx][i] for i in sorted_label_indices]
+        sorted_labels = [all_tp_info[tp_idx]['idx_to_leaf_name'][i] for i in sorted_label_indices]
+        sorted_stats[tp_idx] = list(zip(sorted_labels, sorted_sample_num))
+    return sorted_stats
     
 def get_train_val_indices(dataset, trainset, tp_buffers=None):
     """Must use 'random' to sample the dataset for seeding purpose
@@ -649,10 +612,10 @@ def get_train_val_indices(dataset, trainset, tp_buffers=None):
     return train_val_indices
 
 if __name__ == "__main__":
-    import setups_a
+    import setups
     import sys
     data_dir = '/scratch/leco/'
-    setup = setups_a.SETUPS['semi_inat_weakaug']
+    setup = setups.SETUPS['semi_inat_weakaug']
     print(f"==> Preparing {setup.dataset_name} data..")
     dataset = getattr(sys.modules[__name__], setup.dataset_name)(data_dir)
     all_tp_info, leaf_idx_to_all_class_idx = dataset.get_class_hierarchy()

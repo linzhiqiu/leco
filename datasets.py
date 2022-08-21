@@ -2,6 +2,7 @@ import json
 import torch
 from torch.utils.data import Dataset
 
+import numpy as np
 import torchvision
 import torchvision.transforms as transforms
 import random
@@ -599,3 +600,53 @@ class SemiInat2021StrongAug(SemiInat2021):
     
     def get_transform_train(self):
         return get_inat_transform_train_strong_aug()
+
+class SemiInat2021StrongAug4TPs(SemiInat2021):
+    def __init__(self, data_dir, levels=[3,4,5,6], val_ratio=0.2):
+        super().__init__(data_dir, levels=levels, val_ratio=val_ratio)
+    
+    def get_transform_train(self):
+        return get_inat_transform_train_strong_aug()
+    
+    def get_train_val_indices(self, trainset):
+        self.target_to_indices = {}
+        for idx, target in tqdm(enumerate(trainset.dataset.targets)):
+            if not target in self.target_to_indices:
+                self.target_to_indices[target] = []
+            self.target_to_indices[target].append(idx)
+        
+        num_levels = len(self.levels)
+        all_tps_train_indices = [[] for _ in range(num_levels)]
+        all_tps_val_indices = [[] for _ in range(num_levels)]
+        for target in self.target_to_indices:
+            random.shuffle(self.target_to_indices[target])
+            
+            len_of_indices = len(self.target_to_indices[target])
+            all_tps_indices_target = np.array_split(
+                self.target_to_indices[target],
+                num_levels
+            )
+            
+            for tp_idx, tp_indices in enumerate(all_tps_indices_target):
+                len_of_tp_val = int(len(tp_indices) * self.val_ratio)
+                if len_of_tp_val <= 0:
+                    len_of_tp_val = 1
+                    print(f"At TP{tp_idx}, val set for {target} is 1")
+                elif len_of_tp_val <= 1:
+                    print(f"At TP{tp_idx}, val set for {target} is {len_of_tp_val}")
+                tp_val_indices = tp_indices[:len_of_tp_val]
+                tp_train_indices = tp_indices[len_of_tp_val:]
+                assert len(tp_val_indices) + len(tp_train_indices) == len(tp_indices)
+                assert len(tp_val_indices) > 0 and len(tp_train_indices) > 0
+            
+                all_tps_train_indices[tp_idx] += tp_train_indices.tolist()
+                all_tps_val_indices[tp_idx] += tp_val_indices.tolist()
+
+        for tp_idx, tp_train_indices in enumerate(all_tps_train_indices):
+            print(f"TP{tp_idx} Train Size: {len(tp_train_indices)}")
+        
+        for tp_idx, tp_val_indices in enumerate(all_tps_val_indices):
+            print(f"TP{tp_idx} Val Size: {len(tp_val_indices)}")
+        train_val_indices = [(all_tps_train_indices[tp_idx], all_tps_val_indices[tp_idx]) for tp_idx in range(num_levels)]
+        return train_val_indices
+

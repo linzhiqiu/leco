@@ -17,7 +17,7 @@ from train import get_setup_dir, get_train_dir, get_semi_supervised_dir
 import configs
 import copy
 import train
-import cl_mode
+import leco_mode
 from print_utils import get_exp_str_from_ema_decay
 
 LATEX_FORMAT = True
@@ -47,7 +47,7 @@ argparser.add_argument("--hparam_candidate",
 # SEED_LIST = [None, 1, 10, 100, 1000]# TODO
 # PL_THRESHOLDS = train.PL_THRESHOLDS  # TODO
 # HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
-# CL_MODES = cl_mode.CL_MODES
+# LECO_MODES = leco_mode.LECO_MODES
 # PARTIAL_FEEDBACK_MODE = [None]
 # SEMI_SUPERVISED_ALG = [None]  # TODO
 # TRAIN_MODE_LIST = configs.ALL_TRAIN_MODES['inat']  # TODO
@@ -58,7 +58,7 @@ argparser.add_argument("--hparam_candidate",
 # # SEED_LIST = [None,]
 # PL_THRESHOLDS = train.PL_THRESHOLDS # TODO
 # HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
-# CL_MODES = cl_mode.CL_MODES
+# LECO_MODES = leco_mode.LECO_MODES
 # PARTIAL_FEEDBACK_MODE=[None]
 # SEMI_SUPERVISED_ALG=[None] #TODO
 # TRAIN_MODE_LIST = configs.ALL_TRAIN_MODES['cifar'] # TODO
@@ -70,8 +70,8 @@ argparser.add_argument("--hparam_candidate",
 # # SEED_LIST = [1]  # TODO
 # PL_THRESHOLDS = [0.95]
 # HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
-# CL_MODES = ['label_new']
-# PARTIAL_FEEDBACK_MODE=['single_head', 'two_head', None]
+# LECO_MODES = ['label_new']
+# PARTIAL_FEEDBACK_MODE=['lpl', 'joint', None]
 # SEMI_SUPERVISED_ALG=["DistillHard", "DistillSoft", "Fixmatch", "PL", None] #TODO
 # TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
 
@@ -79,8 +79,8 @@ argparser.add_argument("--hparam_candidate",
 # SEED_LIST = [None, 1, 10, 100, 1000] #TODO
 # PL_THRESHOLDS = [0.95]
 # HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
-# CL_MODES = ['upper_bound_with_multi_task']
-# PARTIAL_FEEDBACK_MODE=['single_head', 'two_head']
+# LECO_MODES = ['upper_bound_with_multi_task']
+# PARTIAL_FEEDBACK_MODE=['lpl', 'joint']
 # SEMI_SUPERVISED_ALG=[None] #TODO
 # # TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
 # TRAIN_MODE_LIST = ['wideres_28_2_scratch_0_finetune_pt_linear_1_finetune_pt_linear']
@@ -90,8 +90,8 @@ SEED_LIST = [None, 1, 10, 100, 1000] #TODO
 HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
 
 PL_THRESHOLDS = [0.95]
-CL_MODES = ['upper_bound_with_multi_task']
-PARTIAL_FEEDBACK_MODE=['single_head', 'two_head']
+LECO_MODES = ['upper_bound_with_multi_task']
+PARTIAL_FEEDBACK_MODE=['lpl', 'joint']
 SEMI_SUPERVISED_ALG = [None]  # TODO
 # TRAIN_MODE_LIST = ['resnet50_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
 TRAIN_MODE_LIST = ['resnet50_scratch_0_finetune_pt_linear_1_finetune_pt_linear']
@@ -102,16 +102,16 @@ TRAIN_MODE_LIST = ['resnet50_scratch_0_finetune_pt_linear_1_finetune_pt_linear']
 # HIERARCHICAL_SEMI_SUPERVISION = train.HIERARCHICAL_SEMI_SUPERVISION
 
 # PL_THRESHOLDS = [None]
-# # CL_MODES = ['upper_bound', 'label_new', 'relabel_old']
-# CL_MODES = ['relabel_old']
+# # LECO_MODES = ['upper_bound', 'label_new', 'relabel_old']
+# LECO_MODES = ['relabel_old']
 # PARTIAL_FEEDBACK_MODE=[None]
 # SEMI_SUPERVISED_ALG=[None] #TODO
 # TRAIN_MODE_LIST = configs.ALL_TRAIN_MODES['inat']
 
 # PL_THRESHOLDS = [0.95]
-# CL_MODES = ['label_new']
-# # PARTIAL_FEEDBACK_MODE=['single_head', 'two_head', None]
-# PARTIAL_FEEDBACK_MODE=['two_head']
+# LECO_MODES = ['label_new']
+# # PARTIAL_FEEDBACK_MODE=['lpl', 'joint', None]
+# PARTIAL_FEEDBACK_MODE=['joint']
 # # SEMI_SUPERVISED_ALG=["DistillHard", "DistillSoft", "Fixmatch", "PL", None] #TODO
 # TRAIN_MODE_LIST = ['resnet50_scratch_0_finetune_pt_linear_1_finetune_prev_linear']
 
@@ -126,7 +126,7 @@ def latex_str(s):
     mean, std = s.split("+-")
     mean = float(mean.strip("%"))
     std = float(std.strip("%"))
-    final_str = f"${mean:.2f}\%\pm{std:.2f}\%$"
+    final_str = f"${mean:.2f}\pm{std:.2f}$"
     return final_str
 
 def mean_std_from_dict(lst_of_dict, key):
@@ -295,13 +295,13 @@ def prepare_scripts_for_time_1(data_dir,
                                hparam_strs,
                                semi_supervised_alg=None,
                                partial_feedback_mode=None,
-                               cl_mode='upper_bound',
+                               leco_mode='upper_bound',
                                hierarchical_semi_supervision=None,
                                pl_threshold=None):
     assert len(hparam_strs) == 1
     scripts = []
     train_file = "train.py"
-    script_file = f"{train_file} --cl_mode {cl_mode} "
+    script_file = f"{train_file} --leco_mode {leco_mode} "
     if ema_decay:
         script_file += f" --ema_decay {ema_decay}"
     script_file += f" --setup_mode {setup_mode} --train_mode {train_mode_str} --hparam_candidate {hparam_candidate} --data_dir {data_dir} --model_save_dir {model_save_dir} --result_dir {result_dir}"
@@ -340,7 +340,7 @@ def save_t_1_res(print_result_dir_time_1, t_1_res):
     tp_idx = 1
     write_path = os.path.join(save_dir, f'{tp_idx}_time.txt')
     
-    all_headers = ['Train mode', 'SSL Alg', 'Head Mode', 'CL Mode', 'Hier-SSL', 'PL-Thre', 'RATIO', 'Finetune']
+    all_headers = ['Train mode', 'SSL Alg', 'Head Mode', 'LECO Mode', 'Hier-SSL', 'PL-Thre']
     all_headers += [f'Best Hparam 1', f'TP1 Ckpt Epoch', f'TP1 Train Acc', f'TP1 Test Acc']
     all_headers += [f'Mask rate', f'Impurity', f'Coarse Acc', f'Coarse Acc (Masked)', 'Mask Rate (filter)', 'Impurity (filter)']
     all_headers += [f'Best Hparam 0', f'TP0 Ckpt Epoch', f'TP0 Train Acc', f'TP0 Test Acc']
@@ -350,11 +350,11 @@ def save_t_1_res(print_result_dir_time_1, t_1_res):
         train_mode_str = configuration_dict_as_key['train_mode_str']
         semi_supervised_alg = configuration_dict_as_key['semi_supervised_alg']
         partial_feedback_mode = configuration_dict_as_key['partial_feedback_mode']
-        cl_mode = configuration_dict_as_key['cl_mode']
+        leco_mode = configuration_dict_as_key['leco_mode']
         hierarchical_semi_supervision = configuration_dict_as_key['hierarchical_semi_supervision']
         pl_threshold = configuration_dict_as_key['pl_threshold']
         
-        row = [train_mode_str, semi_supervised_alg, partial_feedback_mode, cl_mode, hierarchical_semi_supervision, pl_threshold]
+        row = [train_mode_str, semi_supervised_alg, partial_feedback_mode, leco_mode, hierarchical_semi_supervision, pl_threshold]
         
         t_1_epoch = get_mean_std_from_dict(t_1_result['best_epoch'], formatter="f")
         t_1_train_acc = get_mean_std_from_dict(t_1_result['train_acc'])
@@ -394,7 +394,7 @@ def gather_exp(data_dir: str,
                seed_list=SEED_LIST,
                PL_THRESHOLDS=PL_THRESHOLDS,
                HIERARCHICAL_SEMI_SUPERVISION=HIERARCHICAL_SEMI_SUPERVISION,
-               CL_MODES=CL_MODES):
+               LECO_MODES=LECO_MODES):
     
     print_result_dir = os.path.join(result_dir, 'results')
     if ema_decay:
@@ -404,12 +404,7 @@ def gather_exp(data_dir: str,
     setup_list = list(setups.SETUPS.keys())
     t0_all_hparam_candidates = hparams.HPARAM_CANDIDATES[hparam_candidate]
     t1_all_hparam_candidates = hparams.HPARAM_CANDIDATES[hparam_candidate]
-    if hparam_candidate == 'inat':
-        setup_list = ['semi_inat_strongaug']
-        if len(CL_MODES) == 1 and CL_MODES[0] == 'label_new':
-            t0_all_hparam_candidates = ['inat_lr_001_batch_60_wd_0001']
-            t1_all_hparam_candidates = ['inat_lr_0001_batch_60_wd_0001']
-    cl_modes_list = CL_MODES
+    leco_modes_list = LECO_MODES
     
     result_dict = {}
     for setup_mode in setup_list:
@@ -425,7 +420,11 @@ def gather_exp(data_dir: str,
             print(f"{setup_mode} setup has not been created.")
             print(f"Please run the below {len(seed_list)} scripts first:")
             for seed in seed_list:
-                print(f'\tpython train.py --data_dir {data_dir} --setup_mode {setup_mode} --seed {seed}')
+                if seed:
+                    seed_str = f"--seed {seed}"
+                else:
+                    seed_str = ""
+                print(f'\tpython train.py --data_dir {data_dir} --setup_mode {setup_mode} {seed_str}')
             continue
         
         dataset = load_pickle(dataset_path)
@@ -544,14 +543,14 @@ def gather_exp(data_dir: str,
             # if setup_mode == 'cifar100_strongaug_train_2000_val_500':
             #     import pdb; pdb.set_trace()
             ### For Time 1
-            for cl_mode in cl_modes_list:
-                if cl_mode in ['relabel_old', 'upper_bound']:
+            for leco_mode in leco_modes_list:
+                if leco_mode in ['relabel_old', 'upper_bound']:
                     partial_feedback_mode_list = [None]
                     semi_supervised_alg_list = [None]
-                elif cl_mode in ['label_new']:
+                elif leco_mode in ['label_new']:
                     partial_feedback_mode_list = PARTIAL_FEEDBACK_MODE
                     semi_supervised_alg_list = SEMI_SUPERVISED_ALG
-                elif cl_mode in ['upper_bound_with_multi_task']:
+                elif leco_mode in ['upper_bound_with_multi_task']:
                     partial_feedback_mode_list = PARTIAL_FEEDBACK_MODE
                     semi_supervised_alg_list = [None]
                 else:
@@ -574,7 +573,7 @@ def gather_exp(data_dir: str,
                             print_result_dir,
                             setup_mode,
                             train_mode_str,
-                            cl_mode,
+                            leco_mode,
                             f"partial_{partial_feedback_mode}",
                             f"ssl_{semi_supervised_alg}"
                         )
@@ -596,7 +595,7 @@ def gather_exp(data_dir: str,
                                             setup_dir,
                                             ema_decay=ema_decay,
                                             train_mode=train_mode,
-                                            cl_mode=cl_mode,
+                                            leco_mode=leco_mode,
                                             hparam_list=best_hparam_list + [hparam_str],
                                             semi_supervised_alg=semi_supervised_alg,
                                             pl_threshold=pl_threshold,
@@ -630,7 +629,7 @@ def gather_exp(data_dir: str,
                                                 'test_acc' : test_acc
                                             })
                                             if hparam_candidate == 'inat':
-                                                print(f"TP1: {hparam_str} {setup_mode} {train_mode_str} {cl_mode}: Train {train_acc} and test acc {test_acc}")
+                                                print(f"TP1: {hparam_str} {setup_mode} {train_mode_str} {leco_mode}: Train {train_acc} and test acc {test_acc}")
                                         else:
                                             all_hparam_candidates_are_ready = False
                                             if hparam_candidate == 'inat':
@@ -684,7 +683,7 @@ def gather_exp(data_dir: str,
                                     'train_mode_str' : train_mode_str,
                                     'semi_supervised_alg' : semi_supervised_alg,
                                     'partial_feedback_mode' : partial_feedback_mode,
-                                    'cl_mode' : cl_mode,
+                                    'leco_mode' : leco_mode,
                                     'hierarchical_semi_supervision' : hierarchical_semi_supervision,
                                     'pl_threshold' : pl_threshold,
                                 }
@@ -722,7 +721,7 @@ def gather_exp(data_dir: str,
                                         best_hparam_list,
                                         semi_supervised_alg=semi_supervised_alg,
                                         partial_feedback_mode=partial_feedback_mode,
-                                        cl_mode=cl_mode,
+                                        leco_mode=leco_mode,
                                         hierarchical_semi_supervision=hierarchical_semi_supervision,
                                         pl_threshold=pl_threshold,
                                     )
