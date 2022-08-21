@@ -286,10 +286,11 @@ def save_tp_res(print_result_dir_tp1_to_3,
     leco_mode = configuration_dict_as_key['leco_mode']
     hierarchical_semi_supervision = configuration_dict_as_key['hierarchical_semi_supervision']
     pl_threshold = configuration_dict_as_key['pl_threshold']
+    sampling = configuration_dict_as_key['sampling']
             
     assert len(res) >= 2
-    all_headers = ['Train mode', 'SSL Alg', 'Head Mode', 'LECO Mode', 'Hier-SSL', 'PL-Thre']
-    row = [train_mode_str, semi_supervised_alg, partial_feedback_mode, leco_mode, hierarchical_semi_supervision, pl_threshold]
+    all_headers = ['Train mode', 'SSL Alg', 'Head Mode', 'LECO Mode', 'Hier-SSL', 'PL-Thre', 'Sample']
+    row = [train_mode_str, semi_supervised_alg, partial_feedback_mode, leco_mode, hierarchical_semi_supervision, pl_threshold, sampling]
     for tp_idx in range(len(res)-1, 0, -1):
         all_headers += [f'Best Hparam {tp_idx}', f'TP{tp_idx} Ckpt Epoch', f'TP{tp_idx} Train Acc', f'TP{tp_idx} Test Acc']
 
