@@ -65,7 +65,7 @@ PARTIAL_FEEDBACK_MODE = [
     # Ignoring history coarse-labels
     None,
     # Using LPL loss on single classification head 
-    'single_head',
+    'lpl',
     # Using Joint loss on two seperate heads 
     'joint'
 ]
@@ -396,7 +396,7 @@ def get_coarse_loss_func(edge_matrix, partial_feedback_mode):
         return None
     
     def coarse_loss_func(outputs, labels):
-        if partial_feedback_mode == 'single_head':
+        if partial_feedback_mode == 'lpl':
             outputs = outputs - outputs.max(1)[0].unsqueeze(1)
             prob = torch.nn.Softmax(dim=1)(outputs)
             coarse_prob = torch.matmul(prob, edge_matrix)
@@ -560,7 +560,7 @@ def train_semi_supervised(
         ema_model = None
         
     # Below is just a lambda func to wrap the output
-    model_single_head = remove_multi_head(model, tp_idx)
+    model_lpl = remove_multi_head(model, tp_idx)
     
     avg_results = {'train': {'loss_per_epoch': [], 'acc_per_epoch': [], 'per_class_correct_per_epoch': [], 'per_class_count_per_epoch': []},  # only measuring the labeled portion
                    'val':   {'loss_per_epoch': [], 'acc_per_epoch': [], 'per_class_correct_per_epoch': [], 'per_class_count_per_epoch': []},
@@ -695,7 +695,7 @@ def train_semi_supervised(
                     
                 # import pdb; pdb.set_trace()
                 ssl_stats, ssl_loss = ssl_loss_func(
-                                            model_single_head,
+                                            model_lpl,
                                             unlabeled_inputs if not use_both_weak_and_strong else w_s_unlabeled_inputs,
                                             unlabeled_labels if not use_both_weak_and_strong else w_s_unlabeled_labels
                                         )

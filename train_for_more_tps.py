@@ -1,5 +1,6 @@
 """Train LECO-iNat for four TPs
 """
+import pdb
 from typing import List
 import os
 import argparse
@@ -66,7 +67,7 @@ PARTIAL_FEEDBACK_MODE = [
     # Ignoring history coarse-labels
     None,
     # Using LPL loss on single classification head 
-    'single_head',
+    'lpl',
     # Using Joint loss on two seperate heads 
     'joint'
 ]
@@ -118,7 +119,7 @@ argparser.add_argument("--partial_feedback_mode",
                        type=str,
                        default=None,
                        choices=PARTIAL_FEEDBACK_MODE,
-                       help="The partial feedback loss (None/single_head/joint) to use")
+                       help="The partial feedback loss (None/lpl/joint) to use")
 argparser.add_argument("--hierarchical_ssl",
                        type=str,
                        default=None,
@@ -403,17 +404,20 @@ def get_coarse_loss_func(edge_matrices, partial_feedback_mode):
     def coarse_loss_func(outputs, labels, epsilon=1e-20):
         # outputs and labels are list of tensors of size (unlabeled_batch_size, *)
         coarse_loss = 0.0
-        if partial_feedback_mode == 'single_head':
+        if partial_feedback_mode == 'lpl':
             for idx, edge_matrix in enumerate(edge_matrices):
-                outputs_idx = outputs[idx] - outputs[idx].max(1)[0].unsqueeze(1)  # for numerical stability
-                prob = torch.nn.Softmax(dim=1)(outputs_idx) + epsilon  # for numerical stability
-                coarse_prob = torch.matmul(prob, edge_matrix)
+                outputs[idx] = outputs[idx] - outputs[idx].max(1)[0].unsqueeze(1)  # for numerical stability
+                # exps = torch.exp(outputs[idx]) + epsilon
+                # log_exps = torch.log(exps)
+                # log_sum_exps = torch.log(exps.sum(1, keepdim=True))
+                # prob = log_exps - log_sum_exps
+                prob = torch.nn.Softmax(dim=1)(outputs[idx])
+                coarse_prob = torch.matmul(prob, edge_matrix) + epsilon
                 coarse_loss += nll_criterion(torch.log(coarse_prob), labels[idx])
         elif partial_feedback_mode == 'joint':
             for idx, edge_matrix in enumerate(edge_matrices):
-                outputs_0, _ = outputs[idx]
-                outputs_0 = outputs_0 - outputs_0.max(1)[0].unsqueeze(1)
-                log_prob = torch.nn.LogSoftmax(dim=1)(outputs_0)
+                outputs[idx] = outputs[idx] - outputs[idx].max(1)[0].unsqueeze(1)
+                log_prob = torch.nn.LogSoftmax(dim=1)(outputs[idx])
                 coarse_loss += nll_criterion(log_prob, labels[idx])
         else:
             raise NotImplementedError()
@@ -496,6 +500,7 @@ def get_ssl_loss_func(
         elif semi_supervised_alg == 'Fixmatch':
             for edge_matrix in edge_matrices:
                 ssl_objective = Fixmatch(
+                    pl_threshold,
                     hierarchical_ssl=hierarchical_ssl,
                     edge_matrix=edge_matrix
                 )
@@ -576,7 +581,7 @@ def train_semi_supervised(
         ema_model = None
         
     # Below is just a lambda func to wrap the output to only return current tp_idx
-    model_single_head = remove_multi_head(model, tp_idx)
+    model_lpl = remove_multi_head(model, tp_idx)
     
     avg_results = {'train': {'loss_per_epoch': [], 'acc_per_epoch': [], 'per_class_correct_per_epoch': [], 'per_class_count_per_epoch': []},  # only measuring the labeled portion
                    'val':   {'loss_per_epoch': [], 'acc_per_epoch': [], 'per_class_correct_per_epoch': [], 'per_class_count_per_epoch': []},
@@ -669,8 +674,11 @@ def train_semi_supervised(
             
                 if leco_mode == "label_new":
                     curr_partial_count += unlabeled_inputs_i.size(0)
-                else:
+                elif leco_mode == 'upper_bound_with_multi_task':
                     raise NotImplementedError()
+                else:
+                    curr_partial_count += unlabeled_inputs_i.size(0)
+
                 unlabeled_inputs.append(unlabeled_inputs_i)
                 unlabeled_labels.append(unlabeled_labels_i)
             
@@ -683,8 +691,8 @@ def train_semi_supervised(
                     
                     w_s_unlabeled_inputs_i[0] = w_s_unlabeled_inputs_i[0].to(device)
                     w_s_unlabeled_inputs_i[1] = w_s_unlabeled_inputs_i[1].to(device)
-                    assert unlabeled_inputs.size(0) == w_s_unlabeled_inputs_i[0].size(0)
-                    assert unlabeled_inputs.size(0) == w_s_unlabeled_inputs_i[1].size(0)
+                    assert unlabeled_inputs_i.size(0) == w_s_unlabeled_inputs_i[0].size(0)
+                    assert unlabeled_inputs_i.size(0) == w_s_unlabeled_inputs_i[1].size(0)
                     w_s_unlabeled_inputs.append(w_s_unlabeled_inputs_i)
                     w_s_unlabeled_labels.append(w_s_unlabeled_labels_i)
             
@@ -703,35 +711,37 @@ def train_semi_supervised(
                 loss = labeled_loss
                 
                 if coarse_loss_func:
-                    unlabeled_outputs_partial_feedback = None
-                    unlabeled_labels_partial_feedback = None
+                    unlabeled_outputs_partial_feedback = []
+                    unlabeled_labels_partial_feedback = []
                     for idx, unlabeled_inputs_i in enumerate(unlabeled_inputs):
                         unlabeled_outputs_i = model(unlabeled_inputs_i)
                         if leco_mode == 'label_new':
                             if type(unlabeled_outputs_i) == list:
-                                if unlabeled_outputs_partial_feedback is None:
-                                    unlabeled_outputs_partial_feedback = [torch.cat([l_out, u_out]) for l_out, u_out in zip(labeled_outputs, unlabeled_outputs_i)]
-                                else:
-                                    unlabeled_outputs_partial_feedback = [torch.cat([p_out, u_out]) for p_out, u_out in zip(unlabeled_outputs_partial_feedback, unlabeled_outputs_i)]
+                                unlabeled_outputs_partial_feedback.append(unlabeled_outputs_i[idx].to(device))
                             else:
-                                if unlabeled_outputs_partial_feedback is None:
-                                    unlabeled_outputs_partial_feedback = torch.cat([labeled_outputs, unlabeled_outputs_i])
-                                else:
-                                    unlabeled_outputs_partial_feedback = torch.cat([unlabeled_outputs_partial_feedback, unlabeled_outputs_i])
-                            if unlabeled_labels_partial_feedback is None:
-                                unlabeled_labels_partial_feedback = torch.cat([labeled_labels[tp_idx-1], unlabeled_labels[idx][idx].to(device)])
-                            else:
-                                unlabeled_labels_partial_feedback = torch.cat([unlabeled_labels_partial_feedback, unlabeled_labels[idx][idx].to(device)])
+                                unlabeled_outputs_partial_feedback.append(unlabeled_outputs_i)
+                            unlabeled_labels_partial_feedback.append(unlabeled_labels[idx][idx].to(device))
                         else:
                             raise NotImplementedError()
-                    coarse_loss = coarse_loss_func(unlabeled_outputs_partial_feedback, unlabeled_labels_partial_feedback.cuda())
+
+                    # also add labeled outputs to list, but just use its most recent coarse label
+                    if type(labeled_outputs) == list:
+                        unlabeled_outputs_partial_feedback.append(labeled_outputs[idx])
+                    elif type(labeled_outputs) == torch.Tensor:
+                        unlabeled_outputs_partial_feedback.append(labeled_outputs)
+                    else:
+                        raise NotImplementedError()
+                    
+                    unlabeled_labels_partial_feedback.append(labeled_labels[idx].to(device))
+                        
+                    coarse_loss = coarse_loss_func(unlabeled_outputs_partial_feedback, unlabeled_labels_partial_feedback)
                 else:
                     coarse_loss = 0.0
                     
                 ssl_loss = 0.0
                 for idx, ssl_loss_func in enumerate(ssl_loss_funcs):
                     ssl_stats, ssl_loss_i = ssl_loss_func(
-                                                model_single_head,
+                                                model_lpl,
                                                 unlabeled_inputs[idx] if not use_both_weak_and_strong else w_s_unlabeled_inputs[idx],
                                                 unlabeled_labels[idx] if not use_both_weak_and_strong else w_s_unlabeled_labels[idx]
                                             )
@@ -1042,7 +1052,7 @@ def start_training_semi_supervised(model,
                                    partial_feedback_mode: str=None,
                                    hierarchical_ssl: str=None,
                                    sampling: str=None):
-    """Train for time period 0
+    """Train for time period 1-3
     """
     assert tp_idx > 0
     
@@ -1053,8 +1063,7 @@ def start_training_semi_supervised(model,
                 train_mode, 
                 num_of_classes[tp_idx],
                 partial_feedback_mode
-            )
-    
+            ).to(device)
     batch_size = hparams_mode['batch']
     workers = hparams_mode['workers']
     
@@ -1125,11 +1134,11 @@ def start_training_semi_supervised(model,
     
     return model, acc_result, best_result, avg_results, stats
 
-def get_edge_matrices(leaf_idx_to_all_class_idx, tp_idx=1):
-    # Return a dictionary of edge matrices for each time period before tp_idx
+def get_edge_matrices(leaf_idx_to_all_class_idx, tp_idx=1, device=None):
+    # Return a list of edge matrices for each TP before tp_idx
     assert tp_idx > 0
     num_leaf = len(leaf_idx_to_all_class_idx.keys())
-    edge_matrices = {}
+    edge_matrices = [] # 0th is TP0->tp_idx, 1st is TP1->tp_idx, and so on
     
     childs = set()
     for leaf_idx in leaf_idx_to_all_class_idx:
@@ -1150,7 +1159,7 @@ def get_edge_matrices(leaf_idx_to_all_class_idx, tp_idx=1):
             parent = leaf_idx_to_all_class_idx[child_idx][superclass_time]
             edge_matrix[child_idx][parent] = 1.
         
-        edge_matrices[superclass_time] = edge_matrix
+        edge_matrices.append(edge_matrix.to(device))
     return edge_matrices
 
 def start_experiment(data_dir: str, # where the data are saved
@@ -1266,13 +1275,13 @@ def start_experiment(data_dir: str, # where the data are saved
                                                 hierarchical_ssl=hierarchical_ssl,
                                                 ema_decay=ema_decay,
                                                 tp_idx=tp_idx,
-                                                sampling=sampling,
+                                                sampling=sampling if tp_idx > 1 else 'half',
                                             )
                     makedirs(interim_exp_dir_tp_idx)
                     exp_result_path = os.path.join(interim_exp_dir_tp_idx, "result.ckpt")
                     stats_path = os.path.join(interim_exp_dir_tp_idx, "stats.json")
                     
-                    edge_matrices = get_edge_matrices(leaf_idx_to_all_class_idx, tp_idx=tp_idx)
+                    edge_matrices = get_edge_matrices(leaf_idx_to_all_class_idx, tp_idx=tp_idx, device=device)
                     
                     if os.path.exists(exp_result_path):
                         # print(f"{tp_idx} time period already finished for {hparams_str}")
@@ -1350,6 +1359,7 @@ def start_experiment(data_dir: str, # where the data are saved
                     kill(0)
 
 if __name__ == '__main__':
+    torch.cuda.set_device(0)
     args = argparser.parse_args()
     start_experiment(args.data_dir,
                      args.result_dir,

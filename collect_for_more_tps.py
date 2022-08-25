@@ -46,15 +46,15 @@ SEED_LIST = [None, 1, 10, 100, 1000]
 TRAIN_MODE_LIST = configs.ALL_TRAIN_MODES['inat_4_tps']
 HIERARCHICAL_SEMI_SUPERVISION = train_for_more_tps.HIERARCHICAL_SEMI_SUPERVISION
 
-LECO_MODES = ['label_new', 'relabel_old', 'upper_bound']
-PL_THRESHOLDS = [None]
-PARTIAL_FEEDBACK_MODE = [None]
-SEMI_SUPERVISED_ALG = [None]
+# LECO_MODES = ['label_new', 'relabel_old', 'upper_bound']
+# PL_THRESHOLDS = [None]
+# PARTIAL_FEEDBACK_MODE = [None]
+# SEMI_SUPERVISED_ALG = [None]
 
-# LECO_MODES = ['label_new']
-# PL_THRESHOLDS = [0.95]
-# SEMI_SUPERVISED_ALG=["DistillHard", "DistillSoft", "Fixmatch", "PL", None]
-# PARTIAL_FEEDBACK_MODE=['lpl', 'joint', None]
+LECO_MODES = ['label_new']
+PL_THRESHOLDS = [0.95]
+SEMI_SUPERVISED_ALG=["DistillHard", "DistillSoft", "Fixmatch", "PL", None]
+PARTIAL_FEEDBACK_MODE=['lpl', 'joint', None]
 
 def latex_str(s):
     # $89.76\%\pm0.48\%$
@@ -225,27 +225,28 @@ def prepare_scripts(data_dir, result_dir, model_save_dir, setup_mode, train_mode
         scripts.append(script)
     return scripts
 
-def prepare_scripts_for_time_1(data_dir,
-                               result_dir,
-                               model_save_dir,
-                               setup_mode,
-                               train_mode_str,
-                               hparam_candidate,
-                               seed_list,
-                               ema_decay,
-                               hparam_strs,
-                               semi_supervised_alg=None,
-                               partial_feedback_mode=None,
-                               leco_mode='upper_bound',
-                               hierarchical_semi_supervision=None,
-                               pl_threshold=None):
-    assert len(hparam_strs) == 1
+def prepare_scripts_for_time_1_to_3(data_dir,
+                                    result_dir,
+                                    model_save_dir,
+                                    setup_mode,
+                                    train_mode_str,
+                                    hparam_candidate,
+                                    seed_list,
+                                    ema_decay,
+                                    hparam_strs,
+                                    semi_supervised_alg=None,
+                                    partial_feedback_mode=None,
+                                    leco_mode='upper_bound',
+                                    hierarchical_semi_supervision=None,
+                                    pl_threshold=None,
+                                    sampling=None):
+    assert len(hparam_strs) >= 1
     scripts = []
     train_file = "train_for_more_tps.py"
     script_file = f"{train_file} --leco_mode {leco_mode} "
     if ema_decay:
         script_file += f" --ema_decay {ema_decay}"
-    script_file += f" --setup_mode {setup_mode} --train_mode {train_mode_str} --hparam_candidate {hparam_candidate} --data_dir {data_dir} --model_save_dir {model_save_dir} --result_dir {result_dir}"
+    script_file += f" --setup_mode {setup_mode} --train_mode {train_mode_str} --hparam_candidate {hparam_candidate} --data_dir {data_dir} --model_save_dir {model_save_dir} --result_dir {result_dir} --sampling {sampling}"
     script_file += " --hparam_strs " + " ".join(hparam_strs)
     if semi_supervised_alg:
         script_file += f" --semi_supervised_alg {semi_supervised_alg}"
@@ -644,7 +645,7 @@ def gather_exp(data_dir: str,
                                             )
                                     else:
                                         # prepare scripts for this tp_idx
-                                        current_scripts = prepare_scripts_for_time_1(
+                                        current_scripts = prepare_scripts_for_time_1_to_3(
                                             data_dir,
                                             result_dir,
                                             model_save_dir,
@@ -659,6 +660,7 @@ def gather_exp(data_dir: str,
                                             leco_mode=leco_mode,
                                             hierarchical_semi_supervision=hierarchical_semi_supervision,
                                             pl_threshold=pl_threshold,
+                                            sampling=sampling
                                         )
                                         scripts_to_run += current_scripts
                                         # print(f"Setup {setup_mode}: {len(current_scripts)} scripts for train mode {train_mode_str} and config {configuration_dict_as_key}.")
