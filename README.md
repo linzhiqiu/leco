@@ -4,18 +4,20 @@ LECO: Learning with a Ever-Changing Ontology
 
 ## Repository Overview
 
-This repository contains all the code and experiments that appear in our paper for reproducibility.
+This repository contains all the image classification code and experiments that appear in our paper for reproducibility.
 
-## Introduction
+## Get Started
+We provide an environment yml file for conda user at [environment.yml](environment.yml). Or else, you may install torch(==1.6.0) from official site.
 
-This repository provides supplemental code of [*Visual Chirality*](http://bit.ly/visual-chirality) paper.
+## Pretraining (Saving model initialization)
+We provide [pretrain.py](pretrain.py) to save the model initialization file to ensure reproducibility. You may refer to [pretrain.sh](pretrain.sh) for examples of how to save an checkpoint from random initialization (used in our paper).
+
+## Training for 2 time periods (TPs)
+For CIFAR-LECO and iNat-LECO with two TPs, please refer to [train.py](train.py). 
 
 
-# Installation
-To clone this repository with git submodule, please run 
+## Training 4 time periods (TPs)
+For iNat-LECO with four TPs, please refer to [train_for_more_tps.py](train_for_more_tps.py).
 
-```git clone --recurse-submodules https://github.com/linzhiqiu/leco.git```
-
-For more information about submodule usage, please refer to the [official git submodule tutorial](https://git-scm.com/book/en/v2/Git-Tools-Submodules). 
-
-Note: If you cannot run pretrain.py, please reinstall the pytorch-lightning library while specifying "pytorch_lightning==1.0.1" instead of "pytorch_lightning>=1.0.1".
+## Data Visualization
+You may visualize the long-tailed distribution of Semi-iNat at (SemiInatStats.ipynb)[SemiInatStats.ipynb].
