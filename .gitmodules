@@ -1,3 +1,0 @@
-[submodule "self_supervised"]
-	path = self_supervised
-	url = https://github.com/untitled-ai/self_supervised.git
