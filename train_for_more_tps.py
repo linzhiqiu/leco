@@ -1,6 +1,5 @@
 """Train LECO-iNat for four TPs
 """
-import pdb
 from typing import List
 import os
 import argparse
@@ -412,7 +411,7 @@ def get_coarse_loss_func(edge_matrices, partial_feedback_mode):
                 # log_sum_exps = torch.log(exps.sum(1, keepdim=True))
                 # prob = log_exps - log_sum_exps
                 prob = torch.nn.Softmax(dim=1)(outputs[idx])
-                coarse_prob = torch.matmul(prob, edge_matrix) + epsilon
+                coarse_prob = torch.matmul(prob, edge_matrix)
                 coarse_loss += nll_criterion(torch.log(coarse_prob), labels[idx])
         elif partial_feedback_mode == 'joint':
             for idx, edge_matrix in enumerate(edge_matrices):
@@ -626,8 +625,8 @@ def train_semi_supervised(
             weak_and_strong_loader_iters = [iter(loaders['unlabeled_weak_strong'][idx]) for idx in range(len(loaders['unlabeled_weak_strong']))]
         counter = {  # stats this epoch
             'max_probs': torch.Tensor([[]]),  # size 1 x N array
-            'pred_labels': torch.Tensor([[] for _ in range(tp_idx+1)]),  # size tp_idx x N array (0 is coarse, 1 is fine)
-            'gt_labels': torch.Tensor([[] for _ in range(tp_idx+1)]),  # size tp_idx x N array (0 is coarse, 1 is fine)
+            'pred_labels': torch.Tensor([[] for _ in range(2)]),  # size 2 x N array (0 is coarse, 1 is fine)
+            'gt_labels': torch.Tensor([[] for _ in range(2)]),  # size 2 x N array (0 is coarse, 1 is fine)
         }
         
         loader_iter = iter(loader)
@@ -635,8 +634,8 @@ def train_semi_supervised(
         running_loss = 0.0
         running_loss_ssl = 0.0
         running_loss_coarse = 0.0
-        running_corrects = {cls_idx: 0. for cls_idx in range(num_of_classes[1])}  # Overall correct count per class
-        count = {cls_idx: 0 for cls_idx in range(num_of_classes[1])}  # Count per class
+        running_corrects = {cls_idx: 0. for cls_idx in range(num_of_classes[tp_idx])}  # Overall correct count per class
+        count = {cls_idx: 0 for cls_idx in range(num_of_classes[tp_idx])}  # Count per class
         total = 0 # total count
         count_unlabeled_ssl = 0
         count_unlabeled_partial_feedback = 0
@@ -706,7 +705,6 @@ def train_semi_supervised(
                 else:
                     labeled_outputs_for_ce = labeled_outputs
                 _, labeled_preds = torch.max(labeled_outputs_for_ce, 1)
-
                 labeled_loss = l_loss_func(labeled_outputs_for_ce, labeled_labels[tp_idx].to(device))
                 loss = labeled_loss
                 
@@ -1055,7 +1053,6 @@ def start_training_semi_supervised(model,
     """Train for time period 1-3
     """
     assert tp_idx > 0
-    
     model = update_model_multiple_tp(
                 model,
                 model_save_dir,
@@ -1134,10 +1131,22 @@ def start_training_semi_supervised(model,
     
     return model, acc_result, best_result, avg_results, stats
 
+
+def get_num_of_classes(leaf_idx_to_all_class_idx):
+    num_of_classes = []
+    levels = len(leaf_idx_to_all_class_idx[0])
+    for tp_idx in range(levels):
+        childs = set()
+        for leaf_idx in leaf_idx_to_all_class_idx:
+            child = leaf_idx_to_all_class_idx[leaf_idx][tp_idx]
+            childs.add(child)
+        num_child = len(childs)
+        num_of_classes.append(num_child)
+    return num_of_classes
+
 def get_edge_matrices(leaf_idx_to_all_class_idx, tp_idx=1, device=None):
     # Return a list of edge matrices for each TP before tp_idx
     assert tp_idx > 0
-    num_leaf = len(leaf_idx_to_all_class_idx.keys())
     edge_matrices = [] # 0th is TP0->tp_idx, 1st is TP1->tp_idx, and so on
     
     childs = set()
@@ -1145,7 +1154,7 @@ def get_edge_matrices(leaf_idx_to_all_class_idx, tp_idx=1, device=None):
         child = leaf_idx_to_all_class_idx[leaf_idx][tp_idx]
         childs.add(child)
     num_child = len(childs)
-    
+    # print([i for i in range(729) if i not in childs]) # 639 classes are not in the childs
     for superclass_time in range(0, tp_idx):
         parents = set()
         for leaf_idx in leaf_idx_to_all_class_idx:
@@ -1156,9 +1165,16 @@ def get_edge_matrices(leaf_idx_to_all_class_idx, tp_idx=1, device=None):
         edge_matrix = torch.zeros((num_child, num_parents))
     
         for child_idx in range(num_child):
-            parent = leaf_idx_to_all_class_idx[child_idx][superclass_time]
+            leaf = None
+            for leaf_idx in leaf_idx_to_all_class_idx:
+                if child_idx == leaf_idx_to_all_class_idx[leaf_idx][tp_idx]:
+                    leaf = leaf_idx
+                    break
+            parent = leaf_idx_to_all_class_idx[leaf][superclass_time]
             edge_matrix[child_idx][parent] = 1.
         
+        assert edge_matrix.sum() == num_child
+        assert edge_matrix.sum(0).min() == 1
         edge_matrices.append(edge_matrix.to(device))
     return edge_matrices
 
@@ -1202,7 +1218,8 @@ def start_experiment(data_dir: str, # where the data are saved
         print(f"Dataset saved at {dataset_path}")
 
     train_val_subsets, testset, all_tp_info, leaf_idx_to_all_class_idx = dataset
-
+    num_of_classes = get_num_of_classes(leaf_idx_to_all_class_idx)
+    edge_matrices = get_edge_matrices(leaf_idx_to_all_class_idx, tp_idx=3, device='cuda')
     train_mode = configs.TRAIN_MODES[train_mode_str]
     print("Only support 4 time periods for now..")
     for tp_idx in [0,1,2,3]:
@@ -1230,7 +1247,7 @@ def start_experiment(data_dir: str, # where the data are saved
                             train_mode,
                             hparams_mode,
                             train_val_subsets,
-                            [info['num_of_classes'] for info in all_tp_info],
+                            num_of_classes,
                             testset,
                             ema_decay=ema_decay,
                         )
@@ -1302,7 +1319,7 @@ def start_experiment(data_dir: str, # where the data are saved
                             leco_mode,
                             hparams_mode,
                             train_val_subsets,
-                            [info['num_of_classes'] for info in all_tp_info],
+                            num_of_classes,
                             testset,
                             edge_matrices,
                             ema_decay=ema_decay,
@@ -1332,23 +1349,23 @@ def start_experiment(data_dir: str, # where the data are saved
                                             setup_dir,
                                             leco_mode=leco_mode,
                                             train_mode=train_mode,
-                                            hparam_list=hparam_strs,
+                                            hparam_list=hparam_strs[:tp_idx+1],
                                             semi_supervised_alg=semi_supervised_alg,
                                             pl_threshold=pl_threshold,
                                             partial_feedback_mode=partial_feedback_mode,
                                             hierarchical_ssl=hierarchical_ssl,
                                             ema_decay=ema_decay,
                                             tp_idx=tp_idx,
-                                            sampling=sampling,
+                                            sampling=sampling if tp_idx > 1 else 'half',
                                         )
                 exp_result_path = os.path.join(interim_exp_dir_tp_idx, "result.ckpt")
                 
                 # Load the model
                 if os.path.exists(exp_result_path):
-                    # print(f"{tp_idx} time period already finished for {hparams_str}")
+                    # print(f"{tp_idx} time period already finished for {hparam_strs}")
                     res = load_pickle(exp_result_path)
                     print(
-                        f"{tp_idx} time period already finished for {hparams_str}. "
+                        f"{tp_idx} time period already finished for {hparam_strs}. "
                         f"Best epoch: {res['best_result']['best_epoch']}. "
                         f"Best Test Per-Class Acc: {res['acc_result']['test']:.2%}"
                     )

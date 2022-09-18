@@ -1,4 +1,5 @@
 import json
+from pdb import Pdb
 import torch
 from torch.utils.data import Dataset
 
@@ -480,41 +481,76 @@ class SemiInat2021(LecoDataset):
         num_species = 0
         
         all_taxa = {
-            'kingdom' : [],
-            'phylum' : [],
-            'class' : [],
-            'order' : [],
-            'family' : [],
-            'genus' : [],
-            'species' : []
+            # 'kingdom' : [],
+            # 'phylum' : [],
+            # 'class' : [],
+            # 'order' : [],
+            # 'family' : [],
+            # 'genus' : [],
+            # 'species' : [],
+            'kingdom': {},
+            'phylum': {},
+            'class': {},
+            'order': {},
+            'family': {},
+            'genus': {},
+            'species': {},
         }
         for kingdom in hierachy:
+            if kingdom in all_taxa['kingdom']:
+                import pdb; pdb.set_trace()
+            all_taxa['kingdom'][kingdom] = num_kingdom
             num_kingdom += 1
-            all_taxa['kingdom'].append(kingdom)
             print(f"{kingdom} kingdom has {len(hierachy[kingdom])} phylum")
             for phylum in hierachy[kingdom]:
+                if phylum in all_taxa['phylum']:
+                    import pdb; pdb.set_trace()
+                all_taxa['phylum'][phylum] = num_phylum
                 num_phylum += 1
-                all_taxa['phylum'].append(phylum)
                 print(f"\t{phylum} phylum has {len(hierachy[kingdom][phylum])} classes")
                 for the_class in hierachy[kingdom][phylum]:
-                    num_class += 1
-                    all_taxa['class'].append(the_class)
+                    # all_taxa['class'].append(the_class)
+                    if the_class in all_taxa['class']:
+                        import pdb; pdb.set_trace()
+                    all_taxa['class'][the_class] = num_class
                     print(f"\t\t{the_class} class has {len(hierachy[kingdom][phylum][the_class])} orders")
+                    num_class += 1
                     for order in hierachy[kingdom][phylum][the_class]:
-                        num_order += 1
-                        all_taxa['order'].append(order)
+                        # all_taxa['order'].append(order)
+                        if order in all_taxa['order']:
+                            import pdb; pdb.set_trace()
+                        all_taxa['order'][order] = num_order
                         print(f"\t\t\t{order} order has {len(hierachy[kingdom][phylum][the_class][order])} family")
+                        num_order += 1
                         for family in hierachy[kingdom][phylum][the_class][order]:
-                            num_family += 1
-                            all_taxa['family'].append(family)
+                            # all_taxa['family'].append(family)
+                            if family in all_taxa['family']:
+                                import pdb; pdb.set_trace()
+                            all_taxa['family'][family] = num_family
                             print(f"\t\t\t\t{family} family has {len(hierachy[kingdom][phylum][the_class][order][family])} genus")
+                            num_family += 1
                             for genus in hierachy[kingdom][phylum][the_class][order][family]:
-                                num_genus += 1
-                                all_taxa['genus'].append(genus)
+                                if genus == 'Satyrium':
+                                    # family can be
+                                    # Lycaenidae
+                                    # Orchidaceae
+                                    # all_taxa['genus'].append(family + "-" + genus)
+                                    if genus in all_taxa['genus']:
+                                        import pdb; pdb.set_trace()
+                                    all_taxa['genus'][family + "-" + genus] = num_genus
+                                else:
+                                    # all_taxa['genus'].append(genus)
+                                    if genus in all_taxa['genus']:
+                                        import pdb; pdb.set_trace()
+                                    all_taxa['genus'][genus] = num_genus
                                 print(f"\t\t\t\t\t{genus} genus has {len(hierachy[kingdom][phylum][the_class][order][family][genus])} species")
+                                num_genus += 1
                                 for species in hierachy[kingdom][phylum][the_class][order][family][genus]:
+                                    # all_taxa['species'].append(species)
+                                    if species['species'] in all_taxa['species']:
+                                        import pdb; pdb.set_trace()
+                                    all_taxa['species'][species['species']] = species
                                     num_species += 1
-                                    all_taxa['species'].append(species)
                                     pass
         print()
         print(f'Number of kingdom: {num_kingdom}')
@@ -524,35 +560,36 @@ class SemiInat2021(LecoDataset):
         print(f'Number of family: {num_family}')
         print(f'Number of genus: {num_genus}')
         print(f'Number of species: {num_species}')
-
         tp_names = ['kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'species']
-        leaf_idx_to_all_class_idx = {} # leaf_idx_to_all_class_idx[leaf_idx][super_class_time] = super_class_idx at super_class_time of this leaf class 
+        leaf_idx_to_all_class_idx = {} # leaf_idx_to_all_class_idx[leaf_idx][tp_idx] = class_idx at tp_idx of this leaf class 
         all_tp_info = []
         for tp_idx in range(len(tp_names)-1, -1, -1):
             tp_info = {
                 'tp_name' : tp_names[tp_idx],
                 'tp_idx' : tp_idx,
                 'all_classes' : [],
-                'num_of_classes' : 0,
+                'num_of_classes' : 0, # This might be wrong for genus level
                 'idx_to_leaf_name' : {},
                 'leaf_name_to_idx' : {},
             }
             if tp_idx == len(tp_names)-1:
                 tp_name = tp_names[tp_idx]
                 assert tp_name == 'species'
-                for taxa in all_taxa['species']:
+                for _, taxa in all_taxa['species'].items():
                     class_id = taxa['class_id']
                     species = taxa['species']
                     tp_info['idx_to_leaf_name'][class_id] = species
                     tp_info['leaf_name_to_idx'][species] = class_id
-                    # genus = taxa['genus']
+                    if taxa['genus'] == 'Satyrium':
+                        taxa['genus'] = taxa['family'] + "-" + taxa['genus']
                     # family = taxa['family']
                     # order = taxa['order']
                     # the_class = taxa['class']
                     # phylum = taxa['phylum']
-                    # kingdom = taxa['kingdom']
+                    # kingdom = taxa['kingdom'] # Need to correct leaf_id == 267 to genus_id = 639
                     leaf_idx_to_all_class_idx[class_id] = [
-                        all_taxa[level].index(taxa[level])
+                        # all_taxa[level].index(taxa[level])
+                        all_taxa[level][taxa[level]]
                         for level in tp_names[:-1]
                     ] + [class_id]
                 
@@ -566,7 +603,6 @@ class SemiInat2021(LecoDataset):
             tp_info['num_of_classes'] = len(tp_info['all_classes'])
 
             all_tp_info = [tp_info] + all_tp_info
-
         # leaf_idx_to_all_class_idx = {} # leaf_idx_to_all_class_idx[leaf_idx][super_class_time] = super_class_idx at super_class_time of this leaf class 
         for leaf_idx in leaf_idx_to_all_class_idx:
             if not leaf_idx_to_all_class_idx[leaf_idx][-1] == leaf_idx:

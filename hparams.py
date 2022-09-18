@@ -256,8 +256,8 @@ HPARAM_CANDIDATES = {
         # 'inat_lr_003_batch_60_wd_0001',
         
         'inat_lr_001_batch_60_wd_0001',
-        'inat_lr_0001_batch_60_wd_0001',
-        'inat_lr_00001_batch_60_wd_0001',
+        # 'inat_lr_0001_batch_60_wd_0001',
+        # 'inat_lr_00001_batch_60_wd_0001',
         
         # 'inat_lr_0005_batch_60_wd_0001',
         # 'inat_lr_0003_batch_60_wd_0001',

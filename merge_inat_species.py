@@ -574,6 +574,7 @@ class SemiInat2021StrongAug(SemiInat2021):
     def get_transform_train(self):
         return get_inat_transform_train_strong_aug()
 
+
 def samples_per_class(dataset, all_tp_info, leaf_idx_to_all_class_idx):
     tp = len(leaf_idx_to_all_class_idx[0])
     sample_stats = {
@@ -588,9 +589,12 @@ def samples_per_class(dataset, all_tp_info, leaf_idx_to_all_class_idx):
             sample_stats[tp_idx][target_idx] += 1
     sorted_stats = {}
     for tp_idx in sample_stats:
-        sorted_label_indices = sorted(sample_stats[tp_idx].keys(), key=lambda k: sample_stats[tp_idx][k])
-        sorted_sample_num = [sample_stats[tp_idx][i] for i in sorted_label_indices]
-        sorted_labels = [all_tp_info[tp_idx]['idx_to_leaf_name'][i] for i in sorted_label_indices]
+        sorted_label_indices = sorted(
+            sample_stats[tp_idx].keys(), key=lambda k: sample_stats[tp_idx][k])
+        sorted_sample_num = [sample_stats[tp_idx][i]
+                             for i in sorted_label_indices]
+        sorted_labels = [all_tp_info[tp_idx]['idx_to_leaf_name'][i]
+                         for i in sorted_label_indices]
         sorted_stats[tp_idx] = list(zip(sorted_labels, sorted_sample_num))
     return sorted_stats
     

@@ -5,6 +5,6 @@ python pretrain.py --model_save_dir /data3/zhiqiul/self_supervised_models/widere
 python pretrain.py --model_save_dir /data3/zhiqiul/self_supervised_models/wideres_28_2/ --arch wideres_28_2 --pretrain simclr_stl10 
 
 
-# # To train resnet50 on SemiInat2021
+# To train resnet50 on SemiInat2021
 python pretrain.py --model_save_dir /data3/zhiqiul/self_supervised_models/resnet50/ --arch resnet50 --pretrain scratch
 python pretrain.py --model_save_dir /data3/zhiqiul/self_supervised_models/resnet50/ --arch resnet50 --pretrain imagenet

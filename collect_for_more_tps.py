@@ -43,17 +43,19 @@ argparser.add_argument('--sampling', default='half', choices=['half', 'avg'],
 SETUP_LIST = ['semi_inat_strongaug_4_tps']
 # For Inat all CL modes
 SEED_LIST = [None, 1, 10, 100, 1000]
-TRAIN_MODE_LIST = configs.ALL_TRAIN_MODES['inat_4_tps']
 HIERARCHICAL_SEMI_SUPERVISION = train_for_more_tps.HIERARCHICAL_SEMI_SUPERVISION
 
+# TRAIN_MODE_LIST = configs.ALL_TRAIN_MODES['inat_4_tps']
 # LECO_MODES = ['label_new', 'relabel_old', 'upper_bound']
 # PL_THRESHOLDS = [None]
 # PARTIAL_FEEDBACK_MODE = [None]
 # SEMI_SUPERVISED_ALG = [None]
 
+# SEED_LIST = [None]
+TRAIN_MODE_LIST = ['resnet50_scratch_finetune_prev']
 LECO_MODES = ['label_new']
 PL_THRESHOLDS = [0.95]
-SEMI_SUPERVISED_ALG=["DistillHard", "DistillSoft", "Fixmatch", "PL", None]
+SEMI_SUPERVISED_ALG=["DistillSoft", "Fixmatch", None]
 PARTIAL_FEEDBACK_MODE=['lpl', 'joint', None]
 
 def latex_str(s):
@@ -280,7 +282,6 @@ def save_tp_res(print_result_dir_tp1_to_3,
                 res):
     save_dir = os.path.join(print_result_dir_tp1_to_3, "best")
     makedirs(save_dir)
-    write_path = os.path.join(save_dir, f'tp_{tp_idx}.txt')
     train_mode_str = configuration_dict_as_key['train_mode_str']
     semi_supervised_alg = configuration_dict_as_key['semi_supervised_alg']
     partial_feedback_mode = configuration_dict_as_key['partial_feedback_mode']
@@ -288,11 +289,12 @@ def save_tp_res(print_result_dir_tp1_to_3,
     hierarchical_semi_supervision = configuration_dict_as_key['hierarchical_semi_supervision']
     pl_threshold = configuration_dict_as_key['pl_threshold']
     sampling = configuration_dict_as_key['sampling']
+    write_path = os.path.join(save_dir, f'tp_{len(res)-1}.txt')
             
     assert len(res) >= 2
     all_headers = ['Train mode', 'SSL Alg', 'Head Mode', 'LECO Mode', 'Hier-SSL', 'PL-Thre', 'Sample']
     row = [train_mode_str, semi_supervised_alg, partial_feedback_mode, leco_mode, hierarchical_semi_supervision, pl_threshold, sampling]
-    for tp_idx in range(len(res)-1, 0, -1):
+    for tp_idx in range(len(res)-1, -1, -1):
         all_headers += [f'Best Hparam {tp_idx}', f'TP{tp_idx} Ckpt Epoch', f'TP{tp_idx} Train Acc', f'TP{tp_idx} Test Acc']
 
         curr_result, curr_best_hparam = res[tp_idx]
@@ -520,6 +522,8 @@ def gather_exp(data_dir: str,
                                 curr_results = []
                                 while len(curr_best_hparam_list) < len(all_tp_info):
                                     tp_idx = len(curr_best_hparam_list)
+                                    # if tp_idx >= 2:
+                                    #     import pdb; pdb.set_trace()
                                     all_results = {}
                                     best_hparam_str = None
                                     best_test_acc_mean = None
@@ -538,7 +542,7 @@ def gather_exp(data_dir: str,
                                                 pl_threshold=pl_threshold,
                                                 partial_feedback_mode=partial_feedback_mode,
                                                 hierarchical_ssl=hierarchical_semi_supervision,
-                                                sampling=sampling,
+                                                sampling='half' if tp_idx == 1 else sampling,
                                                 tp_idx=tp_idx
                                             )
                                             exp_result_path = os.path.join(train_semi_supervised_dir,
@@ -566,10 +570,14 @@ def gather_exp(data_dir: str,
                                                     'train_acc' : train_acc,
                                                     'test_acc' : test_acc
                                                 })
+
                                                 if hparam_candidate == 'inat':
-                                                    print(f"TP{tp_idx}: {hparam_str} {setup_mode} {train_mode_str} {leco_mode} {sampling}: Train {train_acc} and test acc {test_acc}")
+                                                    print(
+                                                        f"TP{tp_idx}: {hparam_str} {setup_mode} {train_mode_str} {leco_mode} {sampling} {semi_supervised_alg} {partial_feedback_mode} {hierarchical_semi_supervision}: Train {train_acc} and test acc {test_acc}")
                                             else:
                                                 all_hparam_candidates_are_ready = False
+                                                # if tp_idx == 2:
+                                                #     import pdb; pdb.set_trace()
                                                 # if hparam_candidate == 'inat':
                                                 #     # import pdb; pdb.set_trace()
                                                 #     continue
@@ -654,7 +662,7 @@ def gather_exp(data_dir: str,
                                             hparam_candidate,
                                             seed_list,
                                             ema_decay,
-                                            best_hparam_list,
+                                            curr_best_hparam_list,
                                             semi_supervised_alg=semi_supervised_alg,
                                             partial_feedback_mode=partial_feedback_mode,
                                             leco_mode=leco_mode,
@@ -677,6 +685,6 @@ if __name__ == '__main__':
     gather_exp(args.data_dir,
                args.result_dir,
                args.model_save_dir,
-               sampling='half',
+               sampling=args.sampling,
                ema_decay=args.ema_decay,
                hparam_candidate=args.hparam_candidate)

@@ -4,8 +4,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class SSLObjective(nn.Module):
-    def __init__(self, hierarchical_ssl=None, edge_matrix=None):
+    def __init__(self, hierarchical_ssl=None, edge_matrix=None, coarse_tp=0, fine_tp=1):
         self.hierarchical_ssl = hierarchical_ssl
+        self.coarse_tp = coarse_tp
+        self.fine_tp = fine_tp
         self.edge_matrix = edge_matrix
         _, self.fine_to_coarse = torch.nonzero(edge_matrix == 1.0, as_tuple=True)
         assert self.fine_to_coarse.size(0) == edge_matrix.size(0)
@@ -91,7 +93,10 @@ class SSLObjective(nn.Module):
         
         gt_labels = torch.zeros((2, N))
         for i in [0, 1]:
-            gt_labels[i] = labels[i].cpu()
+            if i == 0:
+                gt_labels[i] = labels[self.coarse_tp].cpu()
+            else:
+                gt_labels[i] = labels[self.fine_tp].cpu()
         
         # import pdb; pdb.set_trace()
         ssl_stats = {

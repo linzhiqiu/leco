@@ -1,5 +1,15 @@
-# leco
-Learning with Ever-Changing Ontology
+# Learning with a Ever-Changing Ontology (NeurIPS 2022) [www](https://linzhiqiu.github.io/papers/leco/)
+
+LECO: Learning with a Ever-Changing Ontology
+
+## Repository Overview
+
+This repository contains all the code and experiments that appear in our paper for reproducibility.
+
+## Introduction
+
+This repository provides supplemental code of [*Visual Chirality*](http://bit.ly/visual-chirality) paper.
+
 
 # Installation
 To clone this repository with git submodule, please run 
